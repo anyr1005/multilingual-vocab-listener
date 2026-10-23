@@ -1,10 +1,10 @@
 import { parseWordPayload, type WordPayload } from '../domain/words.js';
 import { DEFAULT_SETTINGS, normalizeSettings, type ListeningSettings } from './playlist.js';
+export type Familiarity = 'known' | 'unknown';
+export type Progress = Record<string, Familiarity>;
 
 const PREFIX = 'vocab-listener:v2:';
 const LEGACY_PREFIX = 'chinese-vocab:v1:';
-export type Familiarity = 'known' | 'unknown';
-export type Progress = Record<string, Familiarity>;
 function readJSON(key: string): unknown {
   try {
     const raw = localStorage.getItem(PREFIX + key) ?? localStorage.getItem(LEGACY_PREFIX + key);
@@ -42,3 +42,12 @@ export function loadCachedWords(): WordPayload | null {
   try { return parseWordPayload(readJSON('words')); } catch { return null; }
 }
 export function cacheWords(value: WordPayload): boolean { return saveJSON('words', value); }
+/** 출퇴근 중 앱을 다시 열었을 때 마지막으로 보던 개념부터 이어서 학습합니다. */
+export function loadLastConceptId(): string | null {
+  try { return localStorage.getItem(PREFIX + 'lastConcept') || null; }
+  catch { return null; }
+}
+export function saveLastConceptId(value: string): boolean {
+  try { localStorage.setItem(PREFIX + 'lastConcept', value); return true; }
+  catch { return false; }
+}

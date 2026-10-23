@@ -128,17 +128,21 @@ Notion Secrets가 하나도 없으면 샘플 데이터로 배포되고, 설정�
 - **연속 듣기**: 한국어/선택 언어의 반복 횟수와 대기 시간을 지정. `전체 언어 듣기`에서는 다른 언어도 1회 이상 추가 재생.
 - **언어별 학습 기록**: 모름/암기 표시를 브라우저 로컬 스토리지에 저장하며 PC·휴대폰 간 자동 동기화는 없습니다.
 - **모바일 TTS**: Web Speech API를 사용하며 언어별 음성이 OS에 설치되어 있지 않으면 다른 목소리로 대체되거나 재생이 실패할 수 있습니다. **화면 잠금/백그라운드 재생은 보장되지 않습니다.**
-- **오프라인**: 마지막 단어 JSON 캐시가 있어 로드 실패 시 복구하지만 웹앱 파일 전체의 PWA 오프라인 캐시는 아직 없습니다.
+- **화면 켜두기**: 연속 재생 중에는 Screen Wake Lock으로 화면이 꺼지지 않게 시도합니다. 지원하는 브라우저(Android Chrome 등)에서만 동작하고 iOS Safari에는 적용되지 않습니다.
+- **오프라인**: 서비스 워커가 앱 파일과 단어 JSON을 캐시하므로 두 번째 방문부터는 네트워크 없이도 열립니다. 최초 1회는 온라인 접속이 필요하고, 단어 갱신은 온라인일 때만 반영됩니다.
+- **이어서 학습**: 마지막으로 보던 개념을 기억해 앱을 다시 열면 그 위치부터 시작합니다. 기기(브라우저)별로 저장됩니다.
 
 ## 7. 폴더와 개발 원칙
 
 ```text
 src/domain/words.ts    # v2 다국어 개념 모델 + v1 호환 + 런타임 검증
 src/logic/playlist.ts  # 언어별 TTS 재생 계획 (순수 함수)
+src/logic/order.ts     # 무작위 학습 순서 고정 (순수 함수)
 src/logic/speech.ts    # Web Speech API 어댑터
 src/logic/storage.ts   # 언어별 복습 기록/설정/데이터 캐시
 src/logic/data.ts      # JSON 로딩
 src/main.ts            # 프런트엔드 DOM/UI
+public/sw.js           # 오프라인 캐시 서비스 워커
 scripts/notion.ts      # Notion 필드 매핑/페이지네이션
 scripts/sync-notion.ts # 실패 시 원본 유지 + JSON 생성
 .github/workflows/     # 자동 GitHub Pages 배포

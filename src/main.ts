@@ -1,10 +1,12 @@
 import { BASE_LANGUAGE, getTerm, languageName, targetLanguages, wordSearchText,
   type Vocabulary, type WordPayload } from './domain/words.js';
 import { fetchWords } from './logic/data.js';
+import { orderByKeys, shuffleKeys } from './logic/order.js';
 import { buildSegments, normalizeSettings } from './logic/playlist.js';
 import { SpeechPlayer, sleep } from './logic/speech.js';
-import { loadProgress, loadSettings, loadTargetLanguage, progressKey, saveProgress,
-  saveSettings, saveTargetLanguage, type Familiarity } from './logic/storage.js';
+import { loadLastConceptId, loadProgress, loadSettings, loadTargetLanguage, progressKey,
+  saveLastConceptId, saveProgress, saveSettings, saveTargetLanguage,
+  type Familiarity } from './logic/storage.js';
 
 type Mode = 'card' | 'listen';
 type Scope = 'all' | 'known' | 'unknown' | 'unmarked';
@@ -30,7 +32,12 @@ const state = {
   controller: null as AbortController | null,
   listLimit: 60,
   lastLoadedAt: 0,
+  shuffleOrder: new Map<string, number>(),
+  // 앱을 다시 열면 마지막으로 보던 개념부터 이어서 시작합니다.
+  restoreConceptId: loadLastConceptId(),
 };
+let savedConceptId: string | null = null;
+let wakeLock: WakeLockSentinel | null = null;
 const status = (message: string): void => { dom('status').textContent = message; };
 const current = (): Vocabulary | undefined => state.visible[state.currentIndex];
 function progressOf(word: Vocabulary): Familiarity | undefined {
@@ -38,18 +45,30 @@ function progressOf(word: Vocabulary): Familiarity | undefined {
   // 기존 중국어 단어장의 로컬 학습 기록 보존.
   return state.progress[key] ?? (state.targetLanguage === 'zh-CN' ? state.progress[word.id] : undefined);
 }
+/**
+ * 연속 재생 중에는 화면이 꺼지지 않게 합니다. 글자를 보면서 듣는 사용 방식에 맞춥니다.
+ * 지원하지 않는 브라우저(iOS Safari 등)에서는 조용히 무시됩니다.
+ */
+async function keepScreenAwake(): Promise<void> {
+  try { wakeLock = (await navigator.wakeLock?.request('screen')) ?? null; }
+  catch { wakeLock = null; }
+}
+function releaseScreen(): void {
+  void wakeLock?.release().catch(() => undefined);
+  wakeLock = null;
+}
 function stopPlayback(): void {
   state.controller?.abort();
   state.controller = null;
   speech.cancel();
+  releaseScreen();
   dom<HTMLButtonElement>('stop').disabled = true;
   dom<HTMLButtonElement>('play').textContent = '▶ 현재 단어부터 재생';
 }
-function shuffle<T>(items: T[]): void {
-  for (let i = items.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [items[i], items[j]] = [items[j]!, items[i]!];
-  }
+function rememberCurrent(word: Vocabulary | undefined): void {
+  if (!word || word.id === savedConceptId) return;
+  savedConceptId = word.id;
+  saveLastConceptId(word.id);
 }
 function populate(id: string, values: string[]): void {
   const element = select(id);
@@ -96,8 +115,12 @@ function applyFilters(): void {
       && (!query || wordSearchText(word).includes(query))
       && (scope === 'all' || (scope === 'unmarked' ? !familiarity : familiarity === scope));
   });
-  if (state.shuffled) shuffle(state.visible);
-  state.currentIndex = 0;
+  if (state.shuffled) state.visible = orderByKeys(state.visible, state.shuffleOrder);
+  // 복원은 앱을 연 직후 한 번만. 이후의 필터 변경은 평소처럼 첫 단어로 돌아갑니다.
+  const restoreAt = state.restoreConceptId
+    ? state.visible.findIndex(word => word.id === state.restoreConceptId) : -1;
+  state.restoreConceptId = null;
+  state.currentIndex = restoreAt > 0 ? restoreAt : 0;
   state.revealed = false;
   state.listLimit = 60;
   render();
@@ -170,6 +193,7 @@ function render(): void {
   }
   dom<HTMLButtonElement>('markKnown').setAttribute('aria-pressed', String(Boolean(word && progressOf(word) === 'known')));
   dom<HTMLButtonElement>('markUnknown').setAttribute('aria-pressed', String(Boolean(word && progressOf(word) === 'unknown')));
+  rememberCurrent(word);
   renderList();
 }
 function renderList(): void {
@@ -290,6 +314,7 @@ async function playAll(): Promise<void> {
   dom<HTMLButtonElement>('stop').disabled = false;
   dom<HTMLButtonElement>('play').textContent = '↻ 처음부터 다시 재생';
   state.revealed = true;
+  void keepScreenAwake();
   try {
     for (let index = start; index < items.length && !signal.aborted; index++) {
       const word = items[index]!;
@@ -309,6 +334,7 @@ async function playAll(): Promise<void> {
   } finally {
     if (state.controller === controller) {
       state.controller = null;
+      releaseScreen();
       dom<HTMLButtonElement>('stop').disabled = true;
       dom<HTMLButtonElement>('play').textContent = '▶ 현재 단어부터 재생';
     }
@@ -321,6 +347,8 @@ async function reloadWords(): Promise<void> {
   try {
     const { payload, fromCache, error } = await fetchWords();
     state.payload = payload; state.words = payload.words; state.lastLoadedAt = Date.now();
+    // 새로 들어온 개념에도 정렬 키를 부여해야 목록 맨 앞으로 몰리지 않습니다.
+    if (state.shuffled) state.shuffleOrder = shuffleKeys(payload.words.map(word => word.id));
     dom('syncBadge').textContent = fromCache ? '⚠ 저장된 데이터' : '✓ 최신 데이터';
     dom('dataSource').textContent = `${payload.words.length}개 개념 · ${payload.source === 'seed' ? '초기 샘플' : 'Notion'}`;
     dom('updatedAt').textContent = payload.updatedAt
@@ -353,6 +381,8 @@ dom('tabCard').addEventListener('click', () => setMode('card'));
 dom('tabListen').addEventListener('click', () => setMode('listen'));
 dom('shuffle').addEventListener('click', () => {
   state.shuffled = !state.shuffled;
+  // 켤 때만 새로 섞습니다. 이후 검색·분류를 바꿔도 남은 단어의 순서는 그대로입니다.
+  if (state.shuffled) state.shuffleOrder = shuffleKeys(state.words.map(word => word.id));
   dom('shuffle').setAttribute('aria-pressed', String(state.shuffled));
   dom('shuffle').textContent = state.shuffled ? '⇄ 무작위 켜짐' : '⇄ 순서 섞기';
   applyFilters();
@@ -371,8 +401,17 @@ dom('resetProgress').addEventListener('click', () => {
   state.progress = {}; saveProgress(state.progress); applyFilters(); status('암기 기록을 초기화했어요.');
 });
 document.addEventListener('visibilitychange', () => {
+  // 화면이 꺼졌다 돌아오면 wake lock이 해제돼 있으므로 재생 중이면 다시 요청합니다.
+  if (!document.hidden && state.controller && !wakeLock) void keepScreenAwake();
   if (document.hidden || state.controller || Date.now() - state.lastLoadedAt < 15 * 60 * 1000) return;
   void reloadWords();
 });
+// 오프라인 캐시. 개발 서버에서는 낡은 번들이 남지 않도록 등록하지 않습니다.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register(new URL('sw.js', document.baseURI))
+      .catch(() => undefined); // 등록 실패는 학습을 막지 않습니다.
+  });
+}
 restoreSettings();
 void reloadWords();

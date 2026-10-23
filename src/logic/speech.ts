@@ -10,12 +10,53 @@ export class SpeechUnavailableError extends Error {
 export class SpeechPlayer {
   private readonly synthesis: SpeechSynthesis | null;
   private activeCancel: (() => void) | null = null;
+  private voicesReady: Promise<void> | null = null;
+  private readonly voiceCache = new Map<string, SpeechSynthesisVoice | null>();
 
   constructor() {
     this.synthesis = typeof window !== 'undefined' && 'speechSynthesis' in window
       ? window.speechSynthesis : null;
+    // 음성 목록은 비동기로 채워지며, 나중에 OS가 언어팩을 추가하면 다시 바뀝니다.
+    this.synthesis?.addEventListener?.('voiceschanged', () => this.voiceCache.clear());
   }
   get isSupported(): boolean { return this.synthesis !== null; }
+
+  /**
+   * Chrome·Safari의 getVoices()는 첫 호출에서 빈 배열을 반환합니다.
+   * 기다리지 않으면 세션의 첫 단어만 OS 기본 음성으로 읽혀 언어가 어긋납니다.
+   */
+  private waitForVoices(): Promise<void> {
+    const synth = this.synthesis;
+    if (!synth || synth.getVoices().length) return Promise.resolve();
+    this.voicesReady ??= new Promise<void>(resolve => {
+      const done = (): void => {
+        clearTimeout(timer);
+        synth.removeEventListener?.('voiceschanged', done);
+        resolve();
+      };
+      // 음성이 하나도 설치되지 않은 환경에서 영원히 멈추지 않도록 제한을 둡니다.
+      const timer = setTimeout(done, 2000);
+      synth.addEventListener?.('voiceschanged', done, { once: true });
+    });
+    return this.voicesReady;
+  }
+
+  /** 정확히 일치하는 BCP47 음성을 우선하고, 없으면 같은 기본 언어의 음성을 씁니다. */
+  private pickVoice(language: string): SpeechSynthesisVoice | null {
+    const cached = this.voiceCache.get(language);
+    if (cached !== undefined) return cached;
+    const voices = this.synthesis?.getVoices() ?? [];
+    const wanted = language.toLowerCase();
+    const prefix = `${wanted.split('-')[0]!}-`;
+    const voice = voices.find(v => v.lang.toLowerCase().replace('_', '-') === wanted)
+      ?? voices.find(v => {
+        const lang = v.lang.toLowerCase().replace('_', '-');
+        return lang === wanted.split('-')[0] || lang.startsWith(prefix);
+      })
+      ?? null;
+    this.voiceCache.set(language, voice);
+    return voice;
+  }
 
   cancel(): void {
     this.activeCancel?.();
@@ -23,18 +64,17 @@ export class SpeechPlayer {
     this.synthesis?.cancel();
   }
 
-  speak(text: string, language: string, rate: number, signal: AbortSignal): Promise<void> {
+  async speak(text: string, language: string, rate: number, signal: AbortSignal): Promise<void> {
     const synth = this.synthesis;
-    if (!synth) return Promise.reject(new SpeechUnavailableError());
-    if (signal.aborted || !text.trim()) return Promise.resolve();
+    if (!synth) throw new SpeechUnavailableError();
+    if (signal.aborted || !text.trim()) return;
+    await this.waitForVoices();
+    if (signal.aborted) return;
     return new Promise<void>((resolve, reject) => {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = language;
       utterance.rate = rate;
-      const voices = synth.getVoices();
-      const exact = voices.find(voice => voice.lang.toLowerCase() === language.toLowerCase());
-      const prefix = language.split('-')[0]!.toLowerCase();
-      const voice = exact ?? voices.find(v => v.lang.toLowerCase().startsWith(prefix));
+      const voice = this.pickVoice(language);
       if (voice) utterance.voice = voice;
       let settled = false;
       let watchdog: ReturnType<typeof setTimeout> | undefined;
@@ -63,7 +103,9 @@ export class SpeechPlayer {
         finish(new Error('음성 엔진의 응답 시간이 초과됐습니다.'));
       }, maxMs);
       try {
-        synth.cancel(); // 이전에 단독으로 재생한 음성을 정리
+        // iOS Safari는 cancel() 직후의 speak()를 자주 흘려버립니다.
+        // 연속 재생은 직전 발화가 끝난 뒤에 넘어오므로 남은 것이 있을 때만 정리합니다.
+        if (synth.speaking || synth.pending) synth.cancel();
         synth.speak(utterance);
       } catch (error) {
         finish(error instanceof Error ? error : new Error('음성을 시작하지 못했습니다.'));
