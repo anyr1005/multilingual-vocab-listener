@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#173d66" />
+  <meta name="description" content="Notion에서 관리하는 다국어 단어장. 한 항목에서 중국어, 영어, 일본어를 연결해 듣고 외우세요." />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="./src/styles.css" />
+  <title>나의 다국어 단어장</title>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <div class="identity"><span class="eyebrow">VOCABULARY LISTENING LAB</span><h1>나의 다국어 단어장</h1>
+        <p>한 개념의 여러 언어를 연결하고, 보면서 듣고 외우기.</p></div>
+      <div id="syncBadge" class="sync" role="status">불러오는 중</div>
+    </header>
+
+    <section class="source panel" aria-label="데이터 동기화 상태">
+      <div><div id="dataSource" class="source-title">단어장 확인 중</div><div id="updatedAt" class="muted">—</div></div>
+      <button id="refresh" type="button" class="quiet">↻ 새로고침</button>
+    </section>
+
+    <section class="panel filters-panel" aria-label="학습할 단어 선택">
+      <div class="section-title"><h2>학습 범위</h2><div class="statistics"><span id="count">0개</span><span id="progress">복습 기록 없음</span></div></div>
+      <div class="filters">
+        <label>학습 언어<select id="targetLanguage"><option value="zh-CN">중국어</option></select></label>
+        <label>대분류<select id="group"><option value="all">전체</option></select></label>
+        <label>세부분류<select id="sub"><option value="all">전체</option></select></label>
+        <label>복습 상태<select id="scope"><option value="all">모든 단어</option><option value="unknown">모르는 단어</option><option value="known">아는 단어</option><option value="unmarked">미분류</option></select></label>
+        <label>단어 검색<input id="search" type="search" placeholder="한국어 · 中文 · English · 日本語" autocomplete="off" /></label>
+      </div>
+    </section>
+
+    <section class="panel study" aria-label="다국어 학습">
+      <div class="study-top"><div class="tabs" role="group" aria-label="학습 모드">
+          <button id="tabCard" class="tab active" type="button" aria-pressed="true">단어 카드</button>
+          <button id="tabListen" class="tab" type="button" aria-pressed="false">연속 듣기</button>
+        </div><button id="shuffle" type="button" class="quiet" aria-pressed="false">⇄ 순서 섞기</button></div>
+
+      <button class="flashcard" id="flashcard" type="button" aria-label="카드를 눌러 정답 확인 또는 숨기기">
+        <span id="cardHint" class="eyebrow">한국어를 보고 학습 언어를 떠올려 보세요</span>
+        <span class="card-primary" id="front">단어 불러오는 중</span>
+        <span class="card-answer" id="answer" hidden>
+          <span class="hanzi" id="back">—</span>
+          <span class="pinyin" id="pronunciation">—</span>
+          <span class="example" id="example"></span>
+          <span class="example-kr" id="exampleTranslation"></span>
+          <span class="note" id="note"></span>
+          <span class="other-translations" id="otherTranslations" hidden></span>
+        </span>
+        <span class="tap-hint" id="tapHint">눌러서 정답 보기</span>
+      </button>
+
+      <div class="study-actions">
+        <button id="prev" type="button" aria-label="이전 단어">← 이전</button>
+        <button id="speakOne" class="primary" type="button">◖)) 발음 듣기</button>
+        <button id="markUnknown" type="button" aria-pressed="false">☆ 모름</button>
+        <button id="markKnown" type="button" aria-pressed="false">✓ 암기</button>
+        <button id="next" type="button" aria-label="다음 단어">다음 →</button>
+      </div>
+
+      <div id="listenSettings" class="listen-settings" hidden>
+        <div class="divider"></div>
+        <div class="section-title"><h2>듣기 설정</h2><span class="muted">바꾸면 이 기기에 저장돼요</span></div>
+        <div class="settings-grid">
+          <label>듣는 순서<select id="order"><option value="ko-target" id="koreanFirstLabel">한국어 → 중국어</option><option value="target-ko" id="targetFirstLabel">중국어 → 한국어</option><option value="target" id="targetOnlyLabel">중국어만</option><option value="ko">한국어만</option><option value="all">한국어 → 선택 언어 → 다른 언어 모두</option></select></label>
+          <label>한국어 반복<select id="repeatKo"><option value="0">읽지 않음</option><option value="1">1회</option><option value="2">2회</option><option value="3">3회</option></select></label>
+          <label><span id="targetRepeatLabel">중국어 반복</span><select id="repeatTarget"><option value="0">읽지 않음</option><option value="1">1회</option><option value="2">2회</option><option value="3">3회</option><option value="4">4회</option></select></label>
+          <label>다른 언어 반복 (모두 듣기)<select id="repeatOther"><option value="0">읽지 않음</option><option value="1" selected>1회</option><option value="2">2회</option><option value="3">3회</option></select></label>
+          <label>언어 전환 대기<select id="thoughtDelay"><option value="0">없음</option><option value="700">0.7초</option><option value="1200">1.2초</option><option value="2000">2초</option><option value="3000">3초</option></select></label>
+          <label>다음 단어까지<select id="wordDelay"><option value="0">없음</option><option value="500">0.5초</option><option value="850">0.85초</option><option value="1500">1.5초</option><option value="2500">2.5초</option></select></label>
+          <label>음성 속도 <span id="rateValue">0.9×</span><input id="rate" type="range" min="0.5" max="1.5" step="0.1" value="0.9" /></label>
+        </div>
+        <div class="display-options" aria-label="화면에 표시할 정보">
+          <label class="check"><input id="showKorean" type="checkbox" checked /> 한국어</label>
+          <label class="check"><input id="showTarget" type="checkbox" checked /> <span id="targetDisplayLabel">학습 언어</span></label>
+          <label class="check"><input id="showPronunciation" type="checkbox" checked /> <span id="pronunciationDisplayLabel">발음 표기</span></label>
+          <label class="check"><input id="showOtherLanguages" type="checkbox" checked /> 다른 언어 표현도 표시</label>
+        </div>
+        <div class="play-controls"><button id="play" class="primary" type="button">▶ 현재 단어부터 재생</button><button id="stop" type="button" disabled>■ 중지</button></div>
+        <p class="muted info">모바일 브라우저의 음성 엔진을 사용합니다. 화면 잠금 또는 다른 앱으로 전환할 때 재생이 중단될 수 있어요.</p>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite">준비 중</p>
+    </section>
+
+    <section class="panel list-panel" aria-label="현재 학습 목록">
+      <div class="section-title"><h2>단어 목록</h2><button id="resetProgress" class="quiet danger" type="button">암기 기록 초기화</button></div>
+      <div id="wordList" class="word-list" aria-label="단어 목록"></div>
+      <button id="moreWords" class="quiet more" type="button" hidden>더 보기</button>
+    </section>
+
+    <footer>단어 편집은 Notion에서만 가능합니다. 암기 기록은 현재 브라우저에 저장돼요.
+      <span>GitHub Pages의 단어 데이터는 공개됩니다. 개인 정보는 넣지 마세요.</span>
+    </footer>
+  </main>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

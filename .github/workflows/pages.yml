@@ -1,0 +1,80 @@
+name: Sync Notion and deploy GitHub Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig*.json'
+      - 'vite.config.ts'
+      - '.node-version'
+      - '.github/workflows/pages.yml'
+  schedule:
+    # 매 15분. GitHub 예약 작업은 늦어지거나 실행이 누락될 수 있습니다.
+    - cron: '7,22,37,52 * * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: multilingual-vocab-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run tests
+        run: npm test
+      - name: Download Notion words (or use demo data if not configured)
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+        shell: bash
+        run: |
+          if [[ -z "$NOTION_TOKEN" && -z "$NOTION_DATA_SOURCE_ID" && -z "$NOTION_DATABASE_ID" ]]; then
+            echo 'Notion secrets not configured: deploying the 170-entry demo dataset.'
+          elif [[ -z "$NOTION_TOKEN" || ( -z "$NOTION_DATA_SOURCE_ID" && -z "$NOTION_DATABASE_ID" ) ]]; then
+            echo 'Incomplete Notion secrets; refusing deployment.' >&2
+            exit 1
+          else
+            # API 실패/응답 비정상 시 빌드 자체가 실패하며 이전 Pages 배포는 유지됩니다.
+            npm run sync:notion -- --output public/data/words.json
+          fi
+      - name: Build frontend
+        run: npm run build
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.preview/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.tsbuildinfo
+coverage/
+
+# IDE/에디터 설정 (머신 종속)
+.idea/
+.vscode/
