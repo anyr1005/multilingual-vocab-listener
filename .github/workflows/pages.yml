@@ -24,6 +24,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  issues: write
 
 concurrency:
   group: multilingual-vocab-pages
@@ -39,7 +40,9 @@ jobs:
         with:
           node-version-file: '.node-version'
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
       - name: Run tests
         run: npm test
       - name: Download Notion words (or use demo data if not configured)
@@ -60,6 +63,30 @@ jobs:
           fi
       - name: Build frontend
         run: npm run build
+      - name: Notify on failure
+        if: failure()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          # 15분 예약 실행이 계속 실패해도 이슈가 쌓이지 않도록, 열려 있는 알림 이슈를 재사용합니다.
+          gh label create sync-failure --color B60205 \
+            --description '자동 동기화/배포 실패 알림' 2>/dev/null || true
+          open_issue=$(gh issue list --label sync-failure --state open --limit 1 \
+            --json number --jq '.[0].number // empty')
+          if [[ -n "$open_issue" ]]; then
+            gh issue comment "$open_issue" --body "재실패: $RUN_URL"
+          else
+            gh issue create --label sync-failure --title '자동 동기화 또는 배포 실패' --body \
+          "자동 실행이 실패했습니다. **기존 Pages 배포와 단어 JSON은 그대로 유지됩니다.**
+
+          실패한 실행: $RUN_URL
+
+          원인을 해결한 뒤 이 이슈를 닫아 주세요. 닫기 전까지 추가 실패는 이 이슈의 댓글로 누적됩니다."
+          fi
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
