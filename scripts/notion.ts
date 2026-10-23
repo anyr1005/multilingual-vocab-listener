@@ -1,28 +1,53 @@
-import { BASE_LANGUAGE, parseWordPayload, type Vocabulary } from '../src/domain/words.js';
+import { BASE_LANGUAGE, canonicalLocale, parseWordPayload, type Vocabulary } from '../src/domain/words.js';
 
 type UnknownRecord = Record<string, unknown>;
 const API_ROOT = 'https://api.notion.com/v1';
 const API_VERSION = '2025-09-03';
 
-/** Notion 컬럼은 기존 관광통역안내사 단어장 그대로 사용 가능합니다. */
+/** 개념 공통 속성. 기존 관광통역안내사 단어장의 컬럼을 그대로 사용할 수 있습니다. */
 const PROPERTY_NAMES = {
   kr: ['용어', '한국어', 'Name', '이름', 'Korean'],
-  cn: ['중국어', '中文', 'Chinese'],
-  py: ['병음 (Pinyin)', '병음', 'Pinyin'],
-  en: ['영어', 'English'],
-  enPronunciation: ['영어 발음', '영어 IPA', 'English Pronunciation'],
-  ja: ['일본어', '日本語', 'Japanese'],
-  jaPronunciation: ['일본어 읽기', '후리가나', 'Japanese Reading'],
   group: ['대분류', 'Category'],
   sub: ['분류', '세부분류', 'Subcategory'],
   note: ['암기포인트', '암기 포인트', '메모', 'Note'],
-  exampleCn: ['중국어 예문', '예문(중국어)', '例句'],
-  exampleKr: ['예문 해석', '예문(한국어)'],
-  exampleEn: ['영어 예문', 'English Example'],
-  exampleJa: ['일본어 예문', 'Japanese Example'],
   tags: ['태그', 'Tags'],
   extra: ['추가 언어 JSON', 'Translations JSON'],
 } as const;
+
+/**
+ * 정식 컬럼을 가진 언어 목록. 새 언어는 이 배열에 한 항목을 추가하면 되고,
+ * 그보다 드물게 쓰는 언어는 `추가 언어 JSON` 컬럼으로 코드 수정 없이 넣을 수 있습니다.
+ * `exampleTranslation`은 예문을 기준 언어(한국어)로 옮긴 것입니다.
+ */
+const LANGUAGE_COLUMNS: readonly {
+  locale: string;
+  text: readonly string[];
+  pronunciation: readonly string[];
+  example: readonly string[];
+  exampleTranslation: readonly string[];
+}[] = [
+  {
+    locale: 'zh-CN',
+    text: ['중국어', '中文', 'Chinese'],
+    pronunciation: ['병음 (Pinyin)', '병음', 'Pinyin'],
+    example: ['중국어 예문', '예문(중국어)', '例句'],
+    exampleTranslation: ['중국어 예문 해석', 'Chinese Example Translation'],
+  },
+  {
+    locale: 'en-US',
+    text: ['영어', 'English'],
+    pronunciation: ['영어 발음', '영어 IPA', 'English Pronunciation'],
+    example: ['영어 예문', 'English Example'],
+    exampleTranslation: ['영어 예문 해석', 'English Example Translation'],
+  },
+  {
+    locale: 'ja-JP',
+    text: ['일본어', '日本語', 'Japanese'],
+    pronunciation: ['일본어 읽기', '후리가나', 'Japanese Reading'],
+    example: ['일본어 예문', 'Japanese Example'],
+    exampleTranslation: ['일본어 예문 해석', 'Japanese Example Translation'],
+  },
+];
 
 function record(input: unknown): UnknownRecord | null {
   return input !== null && typeof input === 'object' && !Array.isArray(input)
@@ -65,28 +90,23 @@ export function extractNotionWord(page: unknown): Vocabulary | null {
   const id = typeof input.id === 'string' ? input.id : '';
   const props = record(input.properties) ?? {};
   const korean = lookup(props, PROPERTY_NAMES.kr);
-  const chinese = lookup(props, PROPERTY_NAMES.cn);
-  const english = lookup(props, PROPERTY_NAMES.en);
-  const japanese = lookup(props, PROPERTY_NAMES.ja);
   const extraRaw = lookup(props, PROPERTY_NAMES.extra);
-  if (!korean && !chinese && !english && !japanese && !extraRaw) return null;
+  const translations = LANGUAGE_COLUMNS
+    .map(column => ({ column, text: lookup(props, column.text) }))
+    .filter(entry => entry.text);
+  if (!korean && !translations.length && !extraRaw) return null;
   if (!id || !korean) throw new Error(`한국어 기준 표현이 없는 Notion 페이지: ${id || '(ID 없음)'}`);
   const terms: Vocabulary['terms'] = { [BASE_LANGUAGE]: {
     text: korean, pronunciation: '', example: '', exampleTranslation: '',
   } };
-  if (chinese) terms['zh-CN'] = {
-    text: chinese, pronunciation: lookup(props, PROPERTY_NAMES.py),
-    example: lookup(props, PROPERTY_NAMES.exampleCn),
-    exampleTranslation: lookup(props, PROPERTY_NAMES.exampleKr),
-  };
-  if (english) terms['en-US'] = {
-    text: english, pronunciation: lookup(props, PROPERTY_NAMES.enPronunciation),
-    example: lookup(props, PROPERTY_NAMES.exampleEn), exampleTranslation: '',
-  };
-  if (japanese) terms['ja-JP'] = {
-    text: japanese, pronunciation: lookup(props, PROPERTY_NAMES.jaPronunciation),
-    example: lookup(props, PROPERTY_NAMES.exampleJa), exampleTranslation: '',
-  };
+  for (const { column, text } of translations) {
+    terms[column.locale] = {
+      text,
+      pronunciation: lookup(props, column.pronunciation),
+      example: lookup(props, column.example),
+      exampleTranslation: lookup(props, column.exampleTranslation),
+    };
+  }
   if (extraRaw) {
     let extra: unknown;
     try { extra = JSON.parse(extraRaw) as unknown; }
@@ -94,12 +114,15 @@ export function extractNotionWord(page: unknown): Vocabulary | null {
     const extraObject = record(extra);
     if (!extraObject) throw new Error(`${id}: 추가 언어 JSON은 객체여야 합니다.`);
     for (const [code, rawTerm] of Object.entries(extraObject)) {
-      if (code === BASE_LANGUAGE || Object.hasOwn(terms, code)) {
-        throw new Error(`${id}: ${code}는 기본 컬럼과 중복되어 추가 언어 JSON에 넣을 수 없습니다.`);
+      // 표준형으로 비교해야 'ZH-cn'이 기본 컬럼의 'zh-CN'과 중복인 것을 잡아냅니다.
+      const locale = canonicalLocale(code);
+      if (!locale) throw new Error(`${id}: 유효하지 않은 언어 코드 ${code}`);
+      if (locale === BASE_LANGUAGE || Object.hasOwn(terms, locale)) {
+        throw new Error(`${id}: ${locale}는 기본 컬럼과 중복되어 추가 언어 JSON에 넣을 수 없습니다.`);
       }
       const term = record(rawTerm);
       if (!term || typeof term.text !== 'string') throw new Error(`${id}/${code}: text 필드가 필요합니다.`);
-      terms[code] = {
+      terms[locale] = {
         text: term.text,
         pronunciation: typeof term.pronunciation === 'string' ? term.pronunciation : '',
         example: typeof term.example === 'string' ? term.example : '',

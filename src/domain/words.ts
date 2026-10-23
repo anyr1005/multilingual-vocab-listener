@@ -24,6 +24,7 @@ export interface WordPayload {
   words: Vocabulary[];
 }
 export const BASE_LANGUAGE = 'ko-KR';
+/** Intl.DisplayNames를 쓸 수 없거나 이름을 모르는 코드에 대비한 폴백입니다. */
 export const LANGUAGE_NAMES: Record<string, string> = {
   'ko-KR': '한국어',
   'zh-CN': '중국어',
@@ -33,7 +34,37 @@ export const LANGUAGE_NAMES: Record<string, string> = {
   'fr-FR': '프랑스어',
   'de-DE': '독일어',
 };
-export const languageName = (code: string): string => LANGUAGE_NAMES[code] ?? code;
+const languageDisplay = ((): Intl.DisplayNames | null => {
+  try { return new Intl.DisplayNames([BASE_LANGUAGE], { type: 'language' }); }
+  catch { return null; }
+})();
+const baseTag = (code: string): string => code.split('-')[0]!;
+function displayOf(tag: string): string | null {
+  try {
+    const name = languageDisplay?.of(tag);
+    // 모르는 코드면 입력을 그대로 돌려주므로, 그때는 폴백으로 넘깁니다.
+    return name && name !== tag ? name : null;
+  } catch { return null; }
+}
+/**
+ * 'zh-CN' → '중국어'. Intl은 'zh-CN'을 '중국어(중국)'으로 풀어 쓰는데
+ * 라벨이 길어지므로 기본 언어 태그('zh')의 이름을 씁니다.
+ */
+export const languageName = (code: string): string =>
+  displayOf(baseTag(code)) ?? LANGUAGE_NAMES[code] ?? code;
+/**
+ * 여러 언어를 한 화면에 늘어놓을 때 쓰는 이름표.
+ * 같은 언어의 다른 지역이 함께 있을 때만 지역을 덧붙입니다.
+ * (zh-CN과 zh-TW가 모두 있으면 '중국어(중국)' / '중국어(대만)')
+ */
+export function languageNames(codes: readonly string[]): Map<string, string> {
+  const counts = new Map<string, number>();
+  for (const code of codes) counts.set(baseTag(code), (counts.get(baseTag(code)) ?? 0) + 1);
+  return new Map(codes.map(code => {
+    const ambiguous = (counts.get(baseTag(code)) ?? 0) > 1;
+    return [code, (ambiguous ? displayOf(code) : null) ?? languageName(code)];
+  }));
+}
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -52,8 +83,15 @@ function tags(value: unknown): string[] {
   }
   return [...new Set(value.map(item => (item as string).trim()).filter(Boolean))];
 }
-function validLocale(code: string): boolean {
-  try { return Intl.getCanonicalLocales(code).length === 1; } catch { return false; }
+/**
+ * 'ZH-cn'과 'zh-CN'이 서로 다른 언어로 갈라지지 않도록 BCP47 표준형으로 통일합니다.
+ * 표기가 잘못되어 해석할 수 없으면 null을 돌려줍니다.
+ */
+export function canonicalLocale(code: string): string | null {
+  try {
+    const canonical = Intl.getCanonicalLocales(code);
+    return canonical.length === 1 ? canonical[0]! : null;
+  } catch { return null; }
 }
 function expression(value: unknown, label: string): Expression {
   if (!object(value)) throw new Error(`${label} 표현이 올바르지 않습니다.`);
@@ -100,8 +138,11 @@ export function parseWordPayload(raw: unknown): WordPayload {
     if (!object(value.terms)) throw new Error(`${id}: 언어별 표현이 없습니다.`);
     const terms: Record<string, Expression> = {};
     for (const [code, term] of Object.entries(value.terms)) {
-      if (!validLocale(code)) throw new Error(`${id}: 유효하지 않은 언어 코드 ${code}`);
-      terms[code] = expression(term, `${id}/${code}`);
+      const locale = canonicalLocale(code);
+      if (!locale) throw new Error(`${id}: 유효하지 않은 언어 코드 ${code}`);
+      // 표준형으로 바꾼 뒤에 겹치는지 본다. 'zh-CN'과 'ZH-cn'은 같은 언어다.
+      if (Object.hasOwn(terms, locale)) throw new Error(`${id}: 중복된 언어 ${locale}`);
+      terms[locale] = expression(term, `${id}/${locale}`);
     }
     if (!terms[BASE_LANGUAGE]) throw new Error(`${id}: 한국어 기준 표현이 없습니다.`);
     if (Object.keys(terms).length < 2) throw new Error(`${id}: 번역 언어가 하나 이상 필요합니다.`);
@@ -135,6 +176,7 @@ export function targetLanguages(words: Vocabulary[]): string[] {
 export function wordSearchText(word: Vocabulary): string {
   return [word.group, word.sub, word.note, ...word.tags,
     ...Object.entries(word.terms).flatMap(([locale, term]) =>
-      [languageName(locale), term.text, term.pronunciation, term.example, term.exampleTranslation])]
+      [locale, languageName(locale), term.text, term.pronunciation,
+        term.example, term.exampleTranslation])]
     .join(' ').toLocaleLowerCase();
 }

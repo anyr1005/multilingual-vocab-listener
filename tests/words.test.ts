@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { getTerm, parseWordPayload, targetLanguages, wordSearchText, type Vocabulary } from '../src/domain/words.js';
-import { buildSegments, DEFAULT_SETTINGS } from '../src/logic/playlist.js';
+import { canonicalLocale, getTerm, languageName, languageNames, parseWordPayload,
+  targetLanguages, wordSearchText, type Vocabulary } from '../src/domain/words.js';
+import { buildSegments, DEFAULT_SETTINGS, normalizeSettings, resolveSteps } from '../src/logic/playlist.js';
 
 const concept: Vocabulary = {
   id: 'apple',
@@ -60,5 +61,82 @@ describe('다국어 재생 순서', () => {
   it('해당 언어 번역이 없는 단어는 재생하지 않는다', () => {
     const onlyChinese = { ...concept, terms: { 'ko-KR': concept.terms['ko-KR']!, 'zh-CN': concept.terms['zh-CN']! } };
     expect(buildSegments(onlyChinese, DEFAULT_SETTINGS, 'en-US')).toEqual([]);
+  });
+});
+
+describe('언어 코드 정규화', () => {
+  it('표기가 달라도 같은 언어로 모은다', () => {
+    const data = parseWordPayload({ schemaVersion: 2, words: [{ ...concept, terms: {
+      'ko-KR': concept.terms['ko-KR']!, 'ZH-cn': concept.terms['zh-CN']!,
+    } }] });
+    expect(Object.keys(data.words[0]!.terms)).toEqual(['ko-KR', 'zh-CN']);
+  });
+  it('같은 언어를 다른 표기로 두 번 넣으면 거부한다', () => {
+    expect(() => parseWordPayload({ schemaVersion: 2, words: [{ ...concept, terms: {
+      'ko-KR': concept.terms['ko-KR']!,
+      'zh-CN': concept.terms['zh-CN']!,
+      'ZH-cn': concept.terms['zh-CN']!,
+    } }] })).toThrow('중복된 언어');
+  });
+  it('해석할 수 없는 코드는 null', () => {
+    expect(canonicalLocale('ZH-cn')).toBe('zh-CN');
+    expect(canonicalLocale('zh_CN')).toBeNull();
+    expect(canonicalLocale('not a locale')).toBeNull();
+  });
+});
+
+describe('언어 이름', () => {
+  it('지역을 붙이지 않은 짧은 이름을 쓴다', () => {
+    expect(languageName('zh-CN')).toBe('중국어');
+    expect(languageName('en-US')).toBe('영어');
+  });
+  it('이름 맵에 없는 언어도 Intl이 풀어 준다', () => {
+    expect(languageName('vi-VN')).toBe('베트남어');
+  });
+  it('같은 언어의 다른 지역이 함께 있을 때만 지역을 덧붙인다', () => {
+    const names = languageNames(['zh-CN', 'zh-TW', 'en-US']);
+    expect(names.get('zh-CN')).toBe('중국어(중국)');
+    expect(names.get('zh-TW')).toBe('중국어(대만)');
+    expect(names.get('en-US')).toBe('영어');
+  });
+});
+
+describe('재생 계획 단계 목록', () => {
+  it('프리셋은 단계 목록으로 풀린다', () => {
+    expect(resolveSteps(concept, DEFAULT_SETTINGS, 'zh-CN')).toEqual([
+      { locale: 'ko-KR', repeats: 1 },
+      { locale: 'zh-CN', repeats: 2 },
+    ]);
+  });
+  it('steps를 주면 프리셋 대신 그 순서로 읽는다', () => {
+    const settings = { ...DEFAULT_SETTINGS, order: 'ko-target' as const, steps: [
+      { locale: 'ja-JP', repeats: 1 },
+      { locale: '$base', repeats: 1 },
+      { locale: '$target', repeats: 2 },
+    ] };
+    expect(buildSegments(concept, settings, 'en-US').map(s => s.language))
+      .toEqual(['ja-JP', 'ko-KR', 'en-US', 'en-US']);
+  });
+  it('$others는 목표·기준 언어를 뺀 나머지로 펼쳐진다', () => {
+    const settings = { ...DEFAULT_SETTINGS, steps: [{ locale: '$others', repeats: 1 }] };
+    expect(resolveSteps(concept, settings, 'zh-CN'))
+      .toEqual([{ locale: 'en-US', repeats: 1 }, { locale: 'ja-JP', repeats: 1 }]);
+  });
+  it('등록되지 않은 언어 단계는 건너뛴다', () => {
+    const settings = { ...DEFAULT_SETTINGS, steps: [
+      { locale: 'fr-FR', repeats: 2 }, { locale: '$target', repeats: 1 },
+    ] };
+    expect(buildSegments(concept, settings, 'zh-CN').map(s => s.language)).toEqual(['zh-CN']);
+  });
+  it('저장된 steps를 복원하고, 형식이 깨진 항목은 버린다', () => {
+    const restored = normalizeSettings({ steps: [
+      { locale: 'ja-JP', repeats: 9 }, { locale: '', repeats: 1 }, 'nope', { repeats: 1 },
+    ] });
+    expect(restored.steps).toEqual([{ locale: 'ja-JP', repeats: 5 }]); // 9 → 상한 5
+  });
+  it('steps가 없거나 전부 쓸 수 없으면 프리셋으로 되돌아간다', () => {
+    expect(normalizeSettings({ order: 'all' }).steps).toBeUndefined();
+    expect(normalizeSettings({ steps: ['nope'] }).steps).toBeUndefined();
+    expect(normalizeSettings({ steps: [] }).steps).toBeUndefined();
   });
 });

@@ -1,12 +1,12 @@
-import { BASE_LANGUAGE, getTerm, languageName, targetLanguages, wordSearchText,
+import { BASE_LANGUAGE, getTerm, languageName, languageNames, targetLanguages, wordSearchText,
   type Vocabulary, type WordPayload } from './domain/words.js';
 import { fetchWords } from './logic/data.js';
 import { orderByKeys, shuffleKeys } from './logic/order.js';
 import { buildSegments, normalizeSettings } from './logic/playlist.js';
 import { SpeechPlayer, sleep } from './logic/speech.js';
-import { loadLastConceptId, loadProgress, loadSettings, loadTargetLanguage, progressKey,
-  saveLastConceptId, saveProgress, saveSettings, saveTargetLanguage,
-  type Familiarity } from './logic/storage.js';
+import { loadLastConceptId, loadProgress, loadSettings, loadTargetLanguage,
+  readProgress, saveLastConceptId, saveProgress, saveSettings, saveTargetLanguage,
+  toggleProgress, type Familiarity } from './logic/storage.js';
 
 type Mode = 'card' | 'listen';
 type Scope = 'all' | 'known' | 'unknown' | 'unmarked';
@@ -22,7 +22,7 @@ const state = {
   payload: null as WordPayload | null,
   words: [] as Vocabulary[],
   visible: [] as Vocabulary[],
-  targetLanguage: loadTargetLanguage(),
+  targetLanguage: loadTargetLanguage() ?? '',
   currentIndex: 0,
   revealed: false,
   mode: 'card' as Mode,
@@ -33,17 +33,18 @@ const state = {
   listLimit: 60,
   lastLoadedAt: 0,
   shuffleOrder: new Map<string, number>(),
+  languageNames: new Map<string, string>(),
   // 앱을 다시 열면 마지막으로 보던 개념부터 이어서 시작합니다.
   restoreConceptId: loadLastConceptId(),
 };
 let savedConceptId: string | null = null;
 let wakeLock: WakeLockSentinel | null = null;
 const status = (message: string): void => { dom('status').textContent = message; };
+/** 같은 언어의 다른 지역이 함께 있을 때만 지역이 붙은 이름을 씁니다. */
+const nameOf = (code: string): string => state.languageNames.get(code) ?? languageName(code);
 const current = (): Vocabulary | undefined => state.visible[state.currentIndex];
 function progressOf(word: Vocabulary): Familiarity | undefined {
-  const key = progressKey(word.id, state.targetLanguage);
-  // 기존 중국어 단어장의 로컬 학습 기록 보존.
-  return state.progress[key] ?? (state.targetLanguage === 'zh-CN' ? state.progress[word.id] : undefined);
+  return readProgress(state.progress, word.id, state.targetLanguage);
 }
 /**
  * 연속 재생 중에는 화면이 꺼지지 않게 합니다. 글자를 보면서 듣는 사용 방식에 맞춥니다.
@@ -80,12 +81,13 @@ function populate(id: string, values: string[]): void {
 }
 function refreshLanguages(): void {
   const languages = targetLanguages(state.words);
+  state.languageNames = languageNames([BASE_LANGUAGE, ...languages]);
   const element = select('targetLanguage');
-  element.replaceChildren(...languages.map(code => new Option(languageName(code), code)));
-  if (!languages.includes(state.targetLanguage)) state.targetLanguage = languages[0] ?? 'zh-CN';
+  element.replaceChildren(...languages.map(code => new Option(nameOf(code), code)));
+  if (!languages.includes(state.targetLanguage)) state.targetLanguage = languages[0] ?? '';
   element.value = state.targetLanguage;
   saveTargetLanguage(state.targetLanguage);
-  const name = languageName(state.targetLanguage);
+  const name = nameOf(state.targetLanguage);
   dom('targetRepeatLabel').textContent = `${name} 반복`;
   dom('targetDisplayLabel').textContent = name;
   dom('pronunciationDisplayLabel').textContent = `${name} 발음 표기`;
@@ -139,7 +141,7 @@ function showOtherTranslations(word: Vocabulary | undefined, revealed: boolean):
   for (const language of languages) {
     const term = getTerm(word, language)!;
     const row = document.createElement('span'); row.className = 'other-term';
-    const label = document.createElement('strong'); label.textContent = `${languageName(language)}  `;
+    const label = document.createElement('strong'); label.textContent = `${nameOf(language)}  `;
     const text = document.createElement('span'); text.textContent = term.text; text.lang = language;
     row.append(label, text);
     if (term.pronunciation) {
@@ -165,7 +167,7 @@ function render(): void {
   dom('front').textContent = !word ? '조건에 맞는 단어가 없어요'
     : allowKorean ? korean?.text ?? '' : '···';
   dom('cardHint').textContent = word
-    ? `${state.currentIndex + 1} / ${state.visible.length} · ${word.group} / ${word.sub} · ${languageName(state.targetLanguage)}`
+    ? `${state.currentIndex + 1} / ${state.visible.length} · ${word.group} / ${word.sub} · ${nameOf(state.targetLanguage)}`
     : '언어, 검색 또는 분류를 변경해 보세요';
   const answer = dom('answer');
   answer.hidden = !word || !state.revealed;
@@ -233,11 +235,7 @@ function move(direction: number): void {
 }
 function mark(familiarity: Familiarity): void {
   const word = current(); if (!word) return;
-  const key = progressKey(word.id, state.targetLanguage);
-  if (progressOf(word) === familiarity) delete state.progress[key];
-  else state.progress[key] = familiarity;
-  // 기존 중국어 기록이 남아 있으면 새 키와 충돌하지 않게 이관합니다.
-  if (state.targetLanguage === 'zh-CN') delete state.progress[word.id];
+  state.progress = toggleProgress(state.progress, word.id, state.targetLanguage, familiarity);
   if (!saveProgress(state.progress)) status('저장 공간 때문에 복습 기록을 저장하지 못했어요.');
   if (select('scope').value === 'all') render(); else applyFilters();
 }
@@ -291,7 +289,7 @@ async function playOne(): Promise<void> {
   state.revealed = true; render();
   const controller = new AbortController(); state.controller = controller;
   try {
-    status(`${languageName(state.targetLanguage)} 발음 재생 중`);
+    status(`${nameOf(state.targetLanguage)} 발음 재생 중`);
     await speech.speak(target.text, state.targetLanguage, state.settings.rate, controller.signal);
     if (!controller.signal.aborted) status('발음 재생 완료');
   } catch (error) {

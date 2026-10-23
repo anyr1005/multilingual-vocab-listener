@@ -39,3 +39,30 @@ describe('Notion 다국어 속성 변환', () => {
     expect(() => extractNotionWord({ id: '3', properties: { '용어': title('사과') } })).toThrow();
   });
 });
+
+describe('언어별 예문 해석', () => {
+  it('중국어·영어·일본어가 각자의 예문 해석을 가진다', () => {
+    const word = extractNotionWord({ object: 'page', id: 'notion-004', properties: {
+      '용어': title('사과'),
+      '중국어': rich('苹果'), '중국어 예문': rich('我吃苹果。'), '중국어 예문 해석': rich('나는 사과를 먹는다.'),
+      '영어': rich('apple'), '영어 예문': rich('I eat an apple.'), '영어 예문 해석': rich('나는 사과 하나를 먹는다.'),
+      '일본어': rich('りんご'), '일본어 예문': rich('りんごを食べます。'), '일본어 예문 해석': rich('사과를 먹습니다.'),
+    } });
+    expect(word?.terms['zh-CN']?.exampleTranslation).toBe('나는 사과를 먹는다.');
+    expect(word?.terms['en-US']?.exampleTranslation).toBe('나는 사과 하나를 먹는다.');
+    expect(word?.terms['ja-JP']?.exampleTranslation).toBe('사과를 먹습니다.');
+  });
+  it('해석 컬럼이 없으면 빈 문자열이고 동기화는 계속된다', () => {
+    const word = extractNotionWord({ id: 'notion-005', properties: {
+      '용어': title('사과'), '영어': rich('apple'), '영어 예문': rich('I eat an apple.'),
+    } });
+    expect(word?.terms['en-US']?.example).toBe('I eat an apple.');
+    expect(word?.terms['en-US']?.exampleTranslation).toBe('');
+  });
+  it('추가 언어 JSON의 대소문자가 달라도 기본 컬럼과 중복으로 걸러진다', () => {
+    expect(() => extractNotionWord({ id: 'notion-006', properties: {
+      '용어': title('사과'), '중국어': rich('苹果'),
+      '추가 언어 JSON': rich('{"ZH-cn":{"text":"苹果"}}'),
+    } })).toThrow('중복');
+  });
+});
