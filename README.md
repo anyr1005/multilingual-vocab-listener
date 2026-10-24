@@ -105,7 +105,7 @@ Notion 속성:
 
 ## 4. Notion 연결
 
-Notion 데이터베이스를 처음 만든다면 `examples/관광통역안내사_168개.csv`를 Notion에 import하세요. 컬럼 이름이 `scripts/notion.ts`의 매핑과 맞춰져 있어 추가 설정 없이 동기화됩니다. 영어·일본어 등은 열만 추가하면 됩니다. (`중요도` 열은 앱이 읽지 않는 개인 분류용입니다.)
+**세팅 전체 절차는 [`docs/NOTION-SETUP.md`](docs/NOTION-SETUP.md)에 정리해 두었습니다.** 컬럼을 직접 만들지 말고 [`examples/notion-단어장-template.csv`](examples/notion-단어장-template.csv)를 Notion에 가져오면 19개 컬럼과 초기 데이터 170개가 한 번에 만들어집니다.
 
 1. Notion 개발자 설정에서 읽기 권한의 Integration을 만듭니다.
 2. 대상 데이터베이스/데이터 소스를 해당 Integration과 공유합니다.
@@ -153,6 +153,7 @@ scripts/notion.ts      # Notion 필드 매핑/페이지네이션
 scripts/sync-notion.ts # 실패 시 원본 유지 + JSON 생성
 .github/workflows/     # 자동 GitHub Pages 배포
 tests/                 # 단위 테스트
+docs/NOTION-SETUP.md   # Notion 데이터베이스 세팅 절차
 AGENTS.md              # Codex에 전달할 개발 규칙
 ```
 
