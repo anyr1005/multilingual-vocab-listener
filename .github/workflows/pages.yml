@@ -45,22 +45,20 @@ jobs:
         run: npm run typecheck
       - name: Run tests
         run: npm test
-      - name: Download Notion words (or use demo data if not configured)
+      - name: Download Notion words
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
         shell: bash
         run: |
-          if [[ -z "$NOTION_TOKEN" && -z "$NOTION_DATA_SOURCE_ID" && -z "$NOTION_DATABASE_ID" ]]; then
-            echo 'Notion secrets not configured: deploying the 170-entry demo dataset.'
-          elif [[ -z "$NOTION_TOKEN" || ( -z "$NOTION_DATA_SOURCE_ID" && -z "$NOTION_DATABASE_ID" ) ]]; then
-            echo 'Incomplete Notion secrets; refusing deployment.' >&2
+          # 저장소에는 단어 JSON이 없으므로 Notion 없이 배포하면 빈 앱이 됩니다.
+          if [[ -z "$NOTION_TOKEN" || ( -z "$NOTION_DATA_SOURCE_ID" && -z "$NOTION_DATABASE_ID" ) ]]; then
+            echo 'Notion secrets missing (NOTION_TOKEN and NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID); refusing deployment.' >&2
             exit 1
-          else
-            # API 실패/응답 비정상 시 빌드 자체가 실패하며 이전 Pages 배포는 유지됩니다.
-            npm run sync:notion -- --output public/data/words.json
           fi
+          # API 실패/응답 비정상 시 빌드 자체가 실패하며 이전 Pages 배포는 유지됩니다.
+          npm run sync:notion -- --output public/data/words.json
       - name: Build frontend
         run: npm run build
       - name: Notify on failure

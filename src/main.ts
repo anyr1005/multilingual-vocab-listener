@@ -1,4 +1,4 @@
-import { BASE_LANGUAGE, getTerm, languageName, languageNames, targetLanguages, wordSearchText,
+import { BASE_LANGUAGE, getTerm, languageName, languageNames, speechTextOf, targetLanguages, wordSearchText,
   type Vocabulary, type WordPayload } from './domain/words.js';
 import { fetchWords } from './logic/data.js';
 import { orderByKeys, shuffleKeys } from './logic/order.js';
@@ -290,7 +290,7 @@ async function playOne(): Promise<void> {
   const controller = new AbortController(); state.controller = controller;
   try {
     status(`${nameOf(state.targetLanguage)} 발음 재생 중`);
-    await speech.speak(target.text, state.targetLanguage, state.settings.rate, controller.signal);
+    await speech.speak(speechTextOf(target), state.targetLanguage, state.settings.rate, controller.signal);
     if (!controller.signal.aborted) status('발음 재생 완료');
   } catch (error) {
     if (!controller.signal.aborted) status(error instanceof Error ? error.message : '발음 재생 실패');

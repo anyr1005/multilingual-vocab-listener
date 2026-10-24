@@ -23,7 +23,7 @@
 ## 안정성 체크리스트
 
 1. Notion 동기화는 API 오류/일부 누락/0개/비정상 데이터에서 **기존 공개 JSON을 덮어쓰지 말 것**.
-2. 새 데이터 모델 변경 시 `public/data/words.json`, `scripts/notion.ts`, 단위 테스트도 함께 변경.
+2. 새 데이터 모델 변경 시 `examples/words.sample.json`(로컬 개발용 샘플), `scripts/notion.ts`, 단위 테스트도 함께 변경. `public/data/words.json`은 동기화 결과물이며 저장소에 두지 않는다.
 3. 한 개념에 다수 언어가 있을 때 UI가 번역을 올바르게 노출하고, 대상 언어가 없는 개념은 해당 언어 학습에서 제외하는지 확인.
 4. 단어 검색은 모든 언어의 원문/발음/예문을 검색할 수 있도록 유지.
 5. GitHub Actions Secrets가 정적 웹사이트에 유출되지 않도록 검토.

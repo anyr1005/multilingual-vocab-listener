@@ -66,3 +66,25 @@ describe('언어별 예문 해석', () => {
     } })).toThrow('중복');
   });
 });
+
+describe('발음 보정 컬럼', () => {
+  it('언어별·한국어 보정 컬럼과 추가 언어 JSON의 speechText를 읽는다', () => {
+    const word = extractNotionWord({ id: 'notion-007', properties: {
+      '용어': title('종묘제례악'), '한국어 발음 보정': rich('종묘제레악'),
+      '중국어': rich('宗庙祭礼乐'), '중국어 발음 보정': rich('宗庙祭礼月'),
+      '일본어': rich('宗廟祭礼楽'), '일본어 발음 보정': rich('そうびょうさいれいがく'),
+      '추가 언어 JSON': rich('{"vi-VN":{"text":"Tông Miếu","speechText":"Tông Miếu tế lễ nhạc"}}'),
+    } });
+    expect(word?.terms['ko-KR']?.speechText).toBe('종묘제레악');
+    expect(word?.terms['zh-CN']?.speechText).toBe('宗庙祭礼月');
+    expect(word?.terms['ja-JP']?.speechText).toBe('そうびょうさいれいがく');
+    expect(word?.terms['vi-VN']?.speechText).toBe('Tông Miếu tế lễ nhạc');
+  });
+  it('보정 컬럼이 없어도 동기화는 계속되고 빈 문자열이다', () => {
+    const word = extractNotionWord({ id: 'notion-008', properties: {
+      '용어': title('사과'), '영어': rich('apple'),
+    } });
+    expect(word?.terms['ko-KR']?.speechText).toBe('');
+    expect(word?.terms['en-US']?.speechText).toBe('');
+  });
+});

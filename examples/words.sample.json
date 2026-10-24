@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 2,
+  "source": "seed",
+  "updatedAt": "",
+  "count": 4,
+  "words": [
+    {
+      "id": "sample-palace",
+      "terms": {
+        "ko-KR": {
+          "text": "경복궁",
+          "pronunciation": "",
+          "example": "",
+          "exampleTranslation": "",
+          "speechText": ""
+        },
+        "zh-CN": {
+          "text": "景福宫",
+          "pronunciation": "jǐng fú gōng",
+          "example": "",
+          "exampleTranslation": "",
+          "speechText": ""
+        }
+      },
+      "group": "고유명사",
+      "sub": "궁궐",
+      "note": "조선 법궁",
+      "tags": []
+    },
+    {
+      "id": "sample-jongmyo-music",
+      "terms": {
+        "ko-KR": {
+          "text": "종묘제례악",
+          "pronunciation": "",
+          "example": "",
+          "exampleTranslation": "",
+          "speechText": ""
+        },
+        "zh-CN": {
+          "text": "宗庙祭礼乐",
+          "pronunciation": "zōng miào jìlǐyuè",
+          "example": "",
+          "exampleTranslation": "",
+          "speechText": "宗庙祭礼月"
+        }
+      },
+      "group": "고유명사",
+      "sub": "무형유산",
+      "note": "발음 보정 예시: 乐를 yuè로 읽힘",
+      "tags": []
+    },
+    {
+      "id": "sample-nongak",
+      "terms": {
+        "ko-KR": {
+          "text": "농악",
+          "pronunciation": "",
+          "example": "",
+          "exampleTranslation": "",
+          "speechText": ""
+        },
+        "zh-CN": {
+          "text": "农乐",
+          "pronunciation": "nóng yuè",
+          "example": "",
+          "exampleTranslation": "",
+          "speechText": "农月"
+        }
+      },
+      "group": "고유명사",
+      "sub": "무형유산",
+      "note": "발음 보정 예시",
+      "tags": []
+    },
+    {
+      "id": "sample-apple",
+      "terms": {
+        "ko-KR": {
+          "text": "사과",
+          "pronunciation": "",
+          "example": "",
+          "exampleTranslation": "",
+          "speechText": ""
+        },
+        "zh-CN": {
+          "text": "苹果",
+          "pronunciation": "píngguǒ",
+          "example": "我吃苹果。",
+          "exampleTranslation": "나는 사과를 먹는다.",
+          "speechText": ""
+        },
+        "en-US": {
+          "text": "apple",
+          "pronunciation": "/ˈæpəl/",
+          "example": "I eat an apple.",
+          "exampleTranslation": "나는 사과 하나를 먹는다.",
+          "speechText": ""
+        },
+        "ja-JP": {
+          "text": "りんご",
+          "pronunciation": "ringo",
+          "example": "りんごを食べます。",
+          "exampleTranslation": "사과를 먹습니다.",
+          "speechText": ""
+        }
+      },
+      "group": "일상",
+      "sub": "명사",
+      "note": "여러 언어 연결 예시",
+      "tags": []
+    }
+  ]
+}

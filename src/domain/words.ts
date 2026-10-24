@@ -7,6 +7,11 @@ export interface Expression {
   pronunciation: string;
   example: string;
   exampleTranslation: string;
+  /**
+   * TTS 전용 대체 텍스트. 엔진이 다음자 등을 잘못 읽을 때 소리 나는 대로 적습니다.
+   * 비어 있으면 text를 읽으며, 화면 표시와 검색에는 쓰지 않습니다.
+   */
+  speechText: string;
 }
 export interface Vocabulary {
   id: string;
@@ -95,11 +100,15 @@ export function canonicalLocale(code: string): string | null {
 }
 function expression(value: unknown, label: string): Expression {
   if (!object(value)) throw new Error(`${label} 표현이 올바르지 않습니다.`);
+  const text = required(value.text, `${label} 단어`);
+  const speechText = optional(value.speechText);
   return {
-    text: required(value.text, `${label} 단어`),
+    text,
     pronunciation: optional(value.pronunciation),
     example: optional(value.example),
     exampleTranslation: optional(value.exampleTranslation),
+    // 원문과 같으면 보정이 아니므로 남기지 않습니다.
+    speechText: speechText === text ? '' : speechText,
   };
 }
 /** v1 중국어 전용 JSON은 프런트엔드에서 읽을 수 있으나 동기화 결과는 항상 v2로 저장합니다. */
@@ -165,6 +174,8 @@ export function parseWordPayload(raw: unknown): WordPayload {
 export function getTerm(word: Vocabulary, language: string): Expression | undefined {
   return word.terms[language];
 }
+/** TTS가 실제로 읽을 텍스트. 보정이 없으면 원문입니다. */
+export const speechTextOf = (term: Expression): string => term.speechText || term.text;
 export function targetLanguages(words: Vocabulary[]): string[] {
   const codes = new Set(words.flatMap(word => Object.keys(word.terms)).filter(code => code !== BASE_LANGUAGE));
   const preferred = ['zh-CN', 'en-US', 'ja-JP'];

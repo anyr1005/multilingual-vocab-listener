@@ -1,15 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { canonicalLocale, getTerm, languageName, languageNames, parseWordPayload,
-  targetLanguages, wordSearchText, type Vocabulary } from '../src/domain/words.js';
+  speechTextOf, targetLanguages, wordSearchText, type Vocabulary } from '../src/domain/words.js';
 import { buildSegments, DEFAULT_SETTINGS, normalizeSettings, resolveSteps } from '../src/logic/playlist.js';
 
 const concept: Vocabulary = {
   id: 'apple',
   terms: {
-    'ko-KR': { text: '사과', pronunciation: '', example: '', exampleTranslation: '' },
-    'zh-CN': { text: '苹果', pronunciation: 'píngguǒ', example: '', exampleTranslation: '' },
-    'en-US': { text: 'apple', pronunciation: '/ˈæpəl/', example: '', exampleTranslation: '' },
-    'ja-JP': { text: 'りんご', pronunciation: 'ringo', example: '', exampleTranslation: '' },
+    'ko-KR': { text: '사과', pronunciation: '', example: '', exampleTranslation: '', speechText: '' },
+    'zh-CN': { text: '苹果', pronunciation: 'píngguǒ', example: '', exampleTranslation: '', speechText: '' },
+    'en-US': { text: 'apple', pronunciation: '/ˈæpəl/', example: '', exampleTranslation: '', speechText: '' },
+    'ja-JP': { text: 'りんご', pronunciation: 'ringo', example: '', exampleTranslation: '', speechText: '' },
   },
   group: '일상', sub: '명사', note: '', tags: [],
 };
@@ -61,6 +62,36 @@ describe('다국어 재생 순서', () => {
   it('해당 언어 번역이 없는 단어는 재생하지 않는다', () => {
     const onlyChinese = { ...concept, terms: { 'ko-KR': concept.terms['ko-KR']!, 'zh-CN': concept.terms['zh-CN']! } };
     expect(buildSegments(onlyChinese, DEFAULT_SETTINGS, 'en-US')).toEqual([]);
+  });
+});
+
+describe('발음 보정 (TTS 전용 텍스트)', () => {
+  const corrected: Vocabulary = { ...concept, terms: {
+    'ko-KR': { ...concept.terms['ko-KR']!, speechText: '사과' },
+    'zh-CN': { ...concept.terms['zh-CN']!, text: '宗庙祭礼乐', speechText: '宗庙祭礼月' },
+    'en-US': concept.terms['en-US']!,
+    'ja-JP': { ...concept.terms['ja-JP']!, text: '宗廟', speechText: 'そうびょう' },
+  } };
+  it('보정이 없으면 빈 문자열이고, 원문과 같은 값도 비운다', () => {
+    const data = parseWordPayload({ schemaVersion: 2, words: [corrected] });
+    expect(data.words[0]!.terms['en-US']?.speechText).toBe('');
+    expect(data.words[0]!.terms['ko-KR']?.speechText).toBe('');
+    expect(data.words[0]!.terms['zh-CN']?.speechText).toBe('宗庙祭礼月');
+    const legacy = parseWordPayload({ schemaVersion: 1, words: [{ id: 'a', kr: '종묘', cn: '宗庙' }] });
+    expect(legacy.words[0]!.terms['zh-CN']?.speechText).toBe('');
+  });
+  it('재생은 보정 텍스트를, 없으면 원문을 읽는다', () => {
+    expect(buildSegments(corrected, DEFAULT_SETTINGS, 'zh-CN').map(s => s.text))
+      .toEqual(['사과', '宗庙祭礼月', '宗庙祭礼月']);
+    expect(buildSegments(corrected, { ...DEFAULT_SETTINGS, order: 'all', targetRepeats: 1 }, 'zh-CN')
+      .map(s => s.text)).toEqual(['사과', '宗庙祭礼月', 'apple', 'そうびょう']);
+    expect(speechTextOf(corrected.terms['en-US']!)).toBe('apple');
+  });
+  it('화면 표시와 검색은 원문을 유지한다', () => {
+    const data = parseWordPayload({ schemaVersion: 2, words: [corrected] });
+    expect(data.words[0]!.terms['zh-CN']?.text).toBe('宗庙祭礼乐');
+    expect(wordSearchText(data.words[0]!)).toContain('宗庙祭礼乐');
+    expect(wordSearchText(data.words[0]!)).not.toContain('宗庙祭礼月');
   });
 });
 
@@ -138,5 +169,14 @@ describe('재생 계획 단계 목록', () => {
     expect(normalizeSettings({ order: 'all' }).steps).toBeUndefined();
     expect(normalizeSettings({ steps: ['nope'] }).steps).toBeUndefined();
     expect(normalizeSettings({ steps: [] }).steps).toBeUndefined();
+  });
+});
+
+describe('로컬 개발용 샘플 데이터', () => {
+  it('examples/words.sample.json이 현재 스키마로 읽힌다', () => {
+    const raw = JSON.parse(readFileSync(new URL('../examples/words.sample.json', import.meta.url), 'utf8')) as unknown;
+    const data = parseWordPayload(raw);
+    expect(data.words.length).toBeGreaterThan(0);
+    expect(data.words.some(word => Object.values(word.terms).some(term => term.speechText))).toBe(true);
   });
 });

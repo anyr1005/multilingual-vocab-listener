@@ -1,4 +1,4 @@
-import { BASE_LANGUAGE, getTerm, type Vocabulary } from '../domain/words.js';
+import { BASE_LANGUAGE, getTerm, speechTextOf, type Vocabulary } from '../domain/words.js';
 
 export type PlaybackOrder = 'ko-target' | 'target-ko' | 'target' | 'ko' | 'all';
 /**
@@ -117,7 +117,7 @@ export function buildSegments(word: Vocabulary, settings: ListeningSettings, tar
     const term = getTerm(word, language);
     if (!term) continue;
     for (let n = 0; n < repeats; n++) {
-      segments.push({ language, text: term.text, waitAfterMs: 250 });
+      segments.push({ language, text: speechTextOf(term), waitAfterMs: 250 });
     }
   }
   for (let i = 0; i + 1 < segments.length; i++) {

@@ -5,7 +5,7 @@ Notion에서 **한 개념에 여러 언어의 표현을 연결**하고, 스마�
 ![모바일 다국어 학습 화면](docs/mobile-preview.png)
 
 - **기술**: Vanilla TypeScript / Vite / Node.js 동기화 스크립트 / GitHub Actions / GitHub Pages
-- **첫 데이터**: 관광통역안내사 중국어 용어 168개 + 영어·일본어 연결을 보여주는 일상 예시 2개 (총 170개)
+- **데이터**: Notion이 유일한 원본입니다. 저장소에는 단어 JSON을 두지 않고, 배포할 때 Actions가 Notion에서 만듭니다
 - **학습**: 한국어 → 선택한 언어 (중국어·영어·일본어 등), 언어별 반복/속도/대기시간, 단어 카드, 검색, 복습 상태
 - **여러 언어 듣기**: 같은 개념에 등록된 표현을 `한국어 → 선택 언어 → 다른 언어 모두` 순서로 재생 가능
 - **원본**: Notion의 데이터만 편집합니다. 웹앱에서 단어 추가·수정 기능은 제공하지 않습니다.
@@ -16,10 +16,14 @@ Node.js 22.12 이상이 필요합니다. WebStorm 또는 VS Code에서 이 폴�
 
 ```bash
 npm install
+npm run data:sample   # 또는 npm run sync:notion (환경 변수 필요)
 npm run dev
 ```
 
-표시되는 로컬 URL로 접속합니다. Notion이 연결되기 전에는 `public/data/words.json`의 샘플이 표시됩니다. **학습 언어를 영어 또는 일본어로 바꾸면 일상 예시 2개가 표시됩니다.** 중국어는 기존 168개와 예시 2개입니다.
+표시되는 로컬 URL로 접속합니다. 앱은 `public/data/words.json`을 읽는데, 이 파일은 git에 올리지 않습니다(`.gitignore`). 로컬에서는 둘 중 하나로 만듭니다.
+
+- `npm run data:sample`: `examples/words.sample.json`의 예시 4개를 복사합니다. 발음 보정과 다국어 연결 예시가 들어 있습니다
+- `npm run sync:notion`: 실제 Notion 내용을 받습니다
 
 ```bash
 npm run check         # 타입 검사, 단위 테스트, Vite 빌드
@@ -49,6 +53,7 @@ Notion 속성:
 | `병음 (Pinyin)`, `영어 발음`, `일본어 읽기` | 텍스트 | 선택 |
 | `중국어 예문`, `영어 예문`, `일본어 예문` | 텍스트 | 선택 |
 | `중국어 예문 해석`, `영어 예문 해석`, `일본어 예문 해석` | 텍스트 | 선택 |
+| `한국어 발음 보정`, `중국어 발음 보정`, `영어 발음 보정`, `일본어 발음 보정` | 텍스트 | 선택, TTS가 잘못 읽을 때만 |
 | `대분류`, `분류`, `암기포인트`, `태그` | 선택/텍스트/다중 선택 | 선택 |
 | `추가 언어 JSON` | 텍스트 | 선택, 고급 확장 |
 
@@ -86,9 +91,9 @@ Notion 속성:
   "words": [{
     "id": "notion-page-id",
     "terms": {
-      "ko-KR": { "text": "사과", "pronunciation": "", "example": "", "exampleTranslation": "" },
-      "zh-CN": { "text": "苹果", "pronunciation": "píngguǒ", "example": "", "exampleTranslation": "" },
-      "en-US": { "text": "apple", "pronunciation": "", "example": "", "exampleTranslation": "" }
+      "ko-KR": { "text": "사과", "pronunciation": "", "example": "", "exampleTranslation": "", "speechText": "" },
+      "zh-CN": { "text": "苹果", "pronunciation": "píngguǒ", "example": "", "exampleTranslation": "", "speechText": "" },
+      "en-US": { "text": "apple", "pronunciation": "", "example": "", "exampleTranslation": "", "speechText": "" }
     },
     "group": "일상",
     "sub": "명사",
@@ -100,12 +105,13 @@ Notion 속성:
 
 - `id`는 Notion 페이지 ID로 유지되어 표현을 수정해도 복습 기록은 유지됩니다.
 - 복습 기록은 `개념 ID + 학습 언어`를 키로 구분합니다. 중국어를 외웠더라도 영어는 별도로 표시됩니다.
+- `speechText`는 TTS 전용 발음 보정입니다. 비어 있으면 `text`를 읽고, 화면 표시와 검색에는 쓰지 않습니다. 선택 필드라 `schemaVersion`은 2 그대로입니다.
 - `schemaVersion: 1` 형식의 이전 JSON과 브라우저 캐시는 읽는 시점에 v2로 변환됩니다.
 - 초기 샘플 ID와 Notion 페이지 ID는 서로 달라, 처음 연동할 때 샘플의 복습 기록은 연결되지 않을 수 있습니다.
 
 ## 4. Notion 연결
 
-**세팅 전체 절차는 [`docs/NOTION-SETUP.md`](docs/NOTION-SETUP.md)에 정리해 두었습니다.** 컬럼을 직접 만들지 말고 [`examples/notion-단어장-template.csv`](examples/notion-단어장-template.csv)를 Notion에 가져오면 19개 컬럼이 한 번에 만들어집니다. 단어는 들어 있지 않습니다.
+**세팅 전체 절차는 [`docs/NOTION-SETUP.md`](docs/NOTION-SETUP.md)에 정리해 두었습니다.** 컬럼을 직접 만들지 말고 [`examples/notion-단어장-template.csv`](examples/notion-단어장-template.csv)를 Notion에 가져오면 23개 컬럼이 한 번에 만들어집니다. 단어는 들어 있지 않습니다.
 
 1. Notion 개발자 설정에서 읽기 권한의 Integration을 만듭니다.
 2. 대상 데이터베이스/데이터 소스를 해당 Integration과 공유합니다.

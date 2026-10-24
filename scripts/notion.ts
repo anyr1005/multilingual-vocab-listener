@@ -7,6 +7,7 @@ const API_VERSION = '2025-09-03';
 /** 개념 공통 속성. 기존 관광통역안내사 단어장의 컬럼을 그대로 사용할 수 있습니다. */
 const PROPERTY_NAMES = {
   kr: ['용어', '한국어', 'Name', '이름', 'Korean'],
+  krSpeech: ['한국어 발음 보정', 'Korean TTS'],
   group: ['대분류', 'Category'],
   sub: ['분류', '세부분류', 'Subcategory'],
   note: ['암기포인트', '암기 포인트', '메모', 'Note'],
@@ -18,6 +19,7 @@ const PROPERTY_NAMES = {
  * 정식 컬럼을 가진 언어 목록. 새 언어는 이 배열에 한 항목을 추가하면 되고,
  * 그보다 드물게 쓰는 언어는 `추가 언어 JSON` 컬럼으로 코드 수정 없이 넣을 수 있습니다.
  * `exampleTranslation`은 예문을 기준 언어(한국어)로 옮긴 것입니다.
+ * `speechText`는 TTS가 잘못 읽을 때만 채우는 발음 보정 텍스트입니다.
  */
 const LANGUAGE_COLUMNS: readonly {
   locale: string;
@@ -25,6 +27,7 @@ const LANGUAGE_COLUMNS: readonly {
   pronunciation: readonly string[];
   example: readonly string[];
   exampleTranslation: readonly string[];
+  speechText: readonly string[];
 }[] = [
   {
     locale: 'zh-CN',
@@ -32,6 +35,7 @@ const LANGUAGE_COLUMNS: readonly {
     pronunciation: ['병음 (Pinyin)', '병음', 'Pinyin'],
     example: ['중국어 예문', '예문(중국어)', '例句'],
     exampleTranslation: ['중국어 예문 해석', 'Chinese Example Translation'],
+    speechText: ['중국어 발음 보정', 'Chinese TTS'],
   },
   {
     locale: 'en-US',
@@ -39,6 +43,7 @@ const LANGUAGE_COLUMNS: readonly {
     pronunciation: ['영어 발음', '영어 IPA', 'English Pronunciation'],
     example: ['영어 예문', 'English Example'],
     exampleTranslation: ['영어 예문 해석', 'English Example Translation'],
+    speechText: ['영어 발음 보정', 'English TTS'],
   },
   {
     locale: 'ja-JP',
@@ -46,6 +51,7 @@ const LANGUAGE_COLUMNS: readonly {
     pronunciation: ['일본어 읽기', '후리가나', 'Japanese Reading'],
     example: ['일본어 예문', 'Japanese Example'],
     exampleTranslation: ['일본어 예문 해석', 'Japanese Example Translation'],
+    speechText: ['일본어 발음 보정', 'Japanese TTS'],
   },
 ];
 
@@ -98,6 +104,7 @@ export function extractNotionWord(page: unknown): Vocabulary | null {
   if (!id || !korean) throw new Error(`한국어 기준 표현이 없는 Notion 페이지: ${id || '(ID 없음)'}`);
   const terms: Vocabulary['terms'] = { [BASE_LANGUAGE]: {
     text: korean, pronunciation: '', example: '', exampleTranslation: '',
+    speechText: lookup(props, PROPERTY_NAMES.krSpeech),
   } };
   for (const { column, text } of translations) {
     terms[column.locale] = {
@@ -105,6 +112,7 @@ export function extractNotionWord(page: unknown): Vocabulary | null {
       pronunciation: lookup(props, column.pronunciation),
       example: lookup(props, column.example),
       exampleTranslation: lookup(props, column.exampleTranslation),
+      speechText: lookup(props, column.speechText),
     };
   }
   if (extraRaw) {
@@ -127,6 +135,7 @@ export function extractNotionWord(page: unknown): Vocabulary | null {
         pronunciation: typeof term.pronunciation === 'string' ? term.pronunciation : '',
         example: typeof term.example === 'string' ? term.example : '',
         exampleTranslation: typeof term.exampleTranslation === 'string' ? term.exampleTranslation : '',
+        speechText: typeof term.speechText === 'string' ? term.speechText : '',
       };
     }
   }
