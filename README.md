@@ -105,7 +105,7 @@ Notion 속성:
 
 ## 4. Notion 연결
 
-**세팅 전체 절차는 [`docs/NOTION-SETUP.md`](docs/NOTION-SETUP.md)에 정리해 두었습니다.** 컬럼을 직접 만들지 말고 [`examples/notion-단어장-template.csv`](examples/notion-단어장-template.csv)를 Notion에 가져오면 19개 컬럼과 초기 데이터 170개가 한 번에 만들어집니다.
+**세팅 전체 절차는 [`docs/NOTION-SETUP.md`](docs/NOTION-SETUP.md)에 정리해 두었습니다.** 컬럼을 직접 만들지 말고 [`examples/notion-단어장-template.csv`](examples/notion-단어장-template.csv)를 Notion에 가져오면 19개 컬럼이 한 번에 만들어집니다. 단어는 들어 있지 않습니다.
 
 1. Notion 개발자 설정에서 읽기 권한의 Integration을 만듭니다.
 2. 대상 데이터베이스/데이터 소스를 해당 Integration과 공유합니다.
