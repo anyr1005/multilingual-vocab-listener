@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseScriptPayload, splitSentences, type Script } from '../src/domain/scripts.js';
-import { buildScriptSegments, DEFAULT_SCRIPT_SETTINGS, normalizeScriptSettings,
+import { buildScriptSegments, DEFAULT_SCRIPT_SETTINGS, normalizeScriptSettings, orderScripts,
   sentenceCount } from '../src/logic/scriptPlaylist.js';
 import { blocksToParagraphs, extractNotionScriptHeader, scriptLanguage } from '../scripts/notion.js';
 
@@ -103,7 +103,13 @@ describe('스크립트 재생 계획', () => {
   });
   it('설정 값을 범위 안으로 맞춘다', () => {
     expect(normalizeScriptSettings({ repeats: 99, rate: 9, sentenceDelayMs: -5 }))
-      .toMatchObject({ repeats: 5, rate: 1.5, sentenceDelayMs: 0, showTranslation: true });
+      .toMatchObject({ repeats: 5, rate: 1.5, sentenceDelayMs: 0, showTranslation: true, playAll: false });
+    expect(normalizeScriptSettings({ playAll: true }).playAll).toBe(true);
     expect(normalizeScriptSettings(null)).toEqual(DEFAULT_SCRIPT_SETTINGS);
+  });
+  it('모든 스크립트는 언어별로 묶되 언어 안에서는 원래 순서를 지킨다', () => {
+    const make = (id: string, language: string): Script => ({ ...script, id, language });
+    const ordered = orderScripts([make('a', 'zh-CN'), make('b', 'ja-JP'), make('c', 'zh-CN'), make('d', 'ja-JP')]);
+    expect(ordered.map(item => item.id)).toEqual(['a', 'c', 'b', 'd']);
   });
 });

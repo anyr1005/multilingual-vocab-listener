@@ -8,13 +8,15 @@ export interface ScriptSettings {
   paragraphDelayMs: number;
   rate: number;
   showTranslation: boolean;
+  /** 한 스크립트가 끝나면 목록의 다음 스크립트로 넘어가 전부 이어 읽습니다. */
+  playAll: boolean;
 }
 /** 재생할 문장 하나. `sentence`는 스크립트 전체에서의 순번이라 화면 강조에 그대로 씁니다. */
 export interface ScriptSegment extends SpeechSegment {
   sentence: number;
 }
 export const DEFAULT_SCRIPT_SETTINGS: ScriptSettings = {
-  repeats: 1, sentenceDelayMs: 400, paragraphDelayMs: 1200, rate: 0.9, showTranslation: true,
+  repeats: 1, sentenceDelayMs: 400, paragraphDelayMs: 1200, rate: 0.9, showTranslation: true, playAll: false,
 };
 export function normalizeScriptSettings(value: Record<string, unknown> | null | undefined): ScriptSettings {
   const pickInt = (v: unknown, fallback: number, min: number, max: number) =>
@@ -27,7 +29,17 @@ export function normalizeScriptSettings(value: Record<string, unknown> | null | 
       ? Math.max(0.5, Math.min(1.5, value.rate)) : DEFAULT_SCRIPT_SETTINGS.rate,
     showTranslation: typeof value?.showTranslation === 'boolean'
       ? value.showTranslation : DEFAULT_SCRIPT_SETTINGS.showTranslation,
+    playAll: typeof value?.playAll === 'boolean' ? value.playAll : DEFAULT_SCRIPT_SETTINGS.playAll,
   };
+}
+/**
+ * 화면 목록과 '모든 스크립트 이어 듣기'가 함께 쓰는 순서. 처음 나온 언어 순으로 묶고,
+ * 같은 언어 안에서는 Notion에서 내보낸 순서를 지킵니다.
+ */
+export function orderScripts(scripts: readonly Script[]): Script[] {
+  const groups = new Map<string, Script[]>();
+  for (const script of scripts) groups.set(script.language, [...groups.get(script.language) ?? [], script]);
+  return [...groups.values()].flat();
 }
 export const sentenceCount = (script: Script): number =>
   script.paragraphs.reduce((sum, paragraph) => sum + paragraph.sentences.length, 0);

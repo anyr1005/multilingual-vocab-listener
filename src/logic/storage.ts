@@ -75,3 +75,11 @@ export function loadScriptPosition(): ScriptPosition | null {
     ? { id, sentence } : null;
 }
 export function saveScriptPosition(value: ScriptPosition): boolean { return saveJSON('scriptPosition', value); }
+/** 언어(BCP47)별로 고른 TTS 음성의 voiceURI. 단어장과 스크립트 페이지가 함께 씁니다. */
+export function loadVoicePreferences(): Record<string, string> {
+  const raw = readJSON('voices');
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw).filter((entry): entry is [string, string] =>
+    typeof entry[1] === 'string' && entry[1] !== ''));
+}
+export function saveVoicePreferences(value: Record<string, string>): boolean { return saveJSON('voices', value); }

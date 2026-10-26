@@ -12,6 +12,7 @@ export class SpeechPlayer {
   private activeCancel: (() => void) | null = null;
   private voicesReady: Promise<void> | null = null;
   private readonly voiceCache = new Map<string, SpeechSynthesisVoice | null>();
+  private preferredVoices: Record<string, string> = {};
 
   constructor() {
     this.synthesis = typeof window !== 'undefined' && 'speechSynthesis' in window
@@ -41,21 +42,35 @@ export class SpeechPlayer {
     return this.voicesReady;
   }
 
-  /** 정확히 일치하는 BCP47 음성을 우선하고, 없으면 같은 기본 언어의 음성을 씁니다. */
+  /**
+   * 사용자가 고른 음성(voiceURI)을 우선하고, 없거나 지금 기기에 없으면
+   * 정확히 일치하는 BCP47 음성 → 같은 기본 언어의 음성 순으로 씁니다.
+   */
   private pickVoice(language: string): SpeechSynthesisVoice | null {
     const cached = this.voiceCache.get(language);
     if (cached !== undefined) return cached;
-    const voices = this.synthesis?.getVoices() ?? [];
-    const wanted = language.toLowerCase();
-    const prefix = `${wanted.split('-')[0]!}-`;
-    const voice = voices.find(v => v.lang.toLowerCase().replace('_', '-') === wanted)
-      ?? voices.find(v => {
-        const lang = v.lang.toLowerCase().replace('_', '-');
-        return lang === wanted.split('-')[0] || lang.startsWith(prefix);
-      })
-      ?? null;
+    const voices = matchingVoices(this.synthesis?.getVoices() ?? [], language);
+    const preferred = this.preferredVoices[language];
+    const voice = voices.find(v => v.voiceURI === preferred) ?? voices[0] ?? null;
     this.voiceCache.set(language, voice);
     return voice;
+  }
+
+  /** 언어별로 고른 음성. 다음 문장부터 바로 적용됩니다. */
+  setPreferredVoices(value: Readonly<Record<string, string>>): void {
+    this.preferredVoices = { ...value };
+    this.voiceCache.clear();
+  }
+
+  /** 이 언어를 읽을 수 있는 기기 음성 목록. 음성 고르기 화면에 씁니다. */
+  async voicesFor(language: string): Promise<SpeechSynthesisVoice[]> {
+    await this.waitForVoices();
+    return matchingVoices(this.synthesis?.getVoices() ?? [], language);
+  }
+
+  /** OS가 음성 목록을 늦게 채우거나 언어팩을 추가했을 때 화면을 다시 그리도록 알립니다. */
+  onVoicesChanged(listener: () => void): void {
+    this.synthesis?.addEventListener?.('voiceschanged', listener);
   }
 
   cancel(): void {
@@ -112,6 +127,20 @@ export class SpeechPlayer {
       }
     });
   }
+}
+
+type VoiceLike = Pick<SpeechSynthesisVoice, 'lang'>;
+/** 정확히 일치하는 BCP47 음성을 앞에, 같은 기본 언어(zh-TW 등)의 음성을 뒤에 둡니다. */
+export function matchingVoices<T extends VoiceLike>(voices: readonly T[], language: string): T[] {
+  const wanted = language.toLowerCase();
+  const base = wanted.split('-')[0]!;
+  const normalized = (voice: T) => voice.lang.toLowerCase().replace('_', '-');
+  const exact = voices.filter(v => normalized(v) === wanted);
+  const related = voices.filter(v => {
+    const lang = normalized(v);
+    return lang !== wanted && (lang === base || lang.startsWith(`${base}-`));
+  });
+  return [...exact, ...related];
 }
 
 export function sleep(ms: number, signal: AbortSignal): Promise<void> {

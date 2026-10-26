@@ -5,12 +5,14 @@ import { orderByKeys, shuffleKeys } from './logic/order.js';
 import { dom, input, keepScreenAwake, registerServiceWorker, releaseScreen, restoreScreenWake, select } from './logic/page.js';
 import { buildSegments, normalizeSettings } from './logic/playlist.js';
 import { SpeechPlayer, sleep } from './logic/speech.js';
-import { loadLastConceptId, loadProgress, loadSettings, loadTargetLanguage, readProgress, saveLastConceptId,
+import { loadLastConceptId, loadProgress, loadSettings, loadTargetLanguage, loadVoicePreferences, readProgress, saveLastConceptId,
   saveProgress, saveSettings, saveTargetLanguage, toggleProgress, type Familiarity } from './logic/storage.js';
 
 type Mode = 'card' | 'listen';
 type Scope = 'all' | 'known' | 'unknown' | 'unmarked';
 const speech = new SpeechPlayer();
+// 스크립트 페이지에서 고른 언어별 음성을 단어장에서도 그대로 씁니다.
+speech.setPreferredVoices(loadVoicePreferences());
 const state = {
   payload: null as WordPayload | null,
   words: [] as Vocabulary[],

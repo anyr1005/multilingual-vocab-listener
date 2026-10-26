@@ -2,9 +2,10 @@ import type { Script } from './domain/scripts.js';
 import { BASE_LANGUAGE, languageName, languageNames } from './domain/words.js';
 import { fetchScripts } from './logic/data.js';
 import { dom, input, keepScreenAwake, registerServiceWorker, releaseScreen, restoreScreenWake, select } from './logic/page.js';
-import { buildScriptSegments, normalizeScriptSettings, sentenceCount } from './logic/scriptPlaylist.js';
+import { buildScriptSegments, normalizeScriptSettings, orderScripts, sentenceCount } from './logic/scriptPlaylist.js';
 import { SpeechPlayer, sleep } from './logic/speech.js';
-import { loadScriptPosition, loadScriptSettings, saveScriptPosition, saveScriptSettings } from './logic/storage.js';
+import { loadScriptPosition, loadScriptSettings, loadVoicePreferences, saveScriptPosition, saveScriptSettings,
+  saveVoicePreferences } from './logic/storage.js';
 
 const speech = new SpeechPlayer();
 const state = {
@@ -14,7 +15,9 @@ const state = {
   position: loadScriptPosition(),
   controller: null as AbortController | null,
   lastLoadedAt: 0,
+  voices: loadVoicePreferences(),
 };
+speech.setPreferredVoices(state.voices);
 const status = (message: string): void => { dom('status').textContent = message; };
 function stopPlayback(): void {
   state.controller?.abort();
@@ -30,11 +33,18 @@ function setPosition(script: Script, sentence: number): void {
   state.position = { id: script.id, sentence };
   saveScriptPosition(state.position);
 }
+/** 화면에 다른 스크립트를 띄웁니다. 처음 문장부터 듣도록 위치도 옮깁니다. */
+function showScript(script: Script): void {
+  setPosition(script, 0);
+  select('scriptSelect').value = script.id;
+  render();
+  void refreshVoices();
+}
 /** 언어별로 묶어 보여 줍니다. 한 스크립트는 한 언어로만 쓰여 있습니다. */
 function refreshOptions(): void {
   const element = select('scriptSelect');
   const groups = new Map<string, Script[]>();
-  for (const script of state.scripts) groups.set(script.language, [...groups.get(script.language) ?? [], script]);
+  for (const script of orderScripts(state.scripts)) groups.set(script.language, [...groups.get(script.language) ?? [], script]);
   const names = languageNames([...groups.keys()]);
   element.replaceChildren(...[...groups].map(([language, scripts]) => {
     const group = document.createElement('optgroup');
@@ -87,14 +97,16 @@ function highlightSentence(index: number, follow: boolean): void {
   if (follow) sentence?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 async function play(from?: number): Promise<void> {
-  const script = currentScript();
-  if (!script) return;
+  const first = currentScript();
+  if (!first) return;
   if (!speech.isSupported) { status('이 브라우저에서는 음성 합성을 지원하지 않습니다.'); return; }
   stopPlayback();
   const settings = { ...state.settings };
-  const total = sentenceCount(script);
-  const saved = state.position?.id === script.id ? state.position.sentence : 0;
-  let start = Math.min(from ?? saved, total - 1);
+  // 모든 스크립트를 이어 들을 때도 지금 화면의 스크립트·문장에서 시작합니다.
+  const queue = settings.playAll ? orderScripts(state.scripts) : [first];
+  let firstIndex = Math.max(0, queue.indexOf(first));
+  const saved = state.position?.id === first.id ? state.position.sentence : 0;
+  let start = Math.min(from ?? saved, sentenceCount(first) - 1);
   const controller = new AbortController(); state.controller = controller;
   const { signal } = controller;
   dom<HTMLButtonElement>('scriptStop').disabled = false;
@@ -103,20 +115,28 @@ async function play(from?: number): Promise<void> {
   try {
     for (let pass = 1; settings.repeats === 0 || pass <= settings.repeats; pass++) {
       const passLabel = settings.repeats === 1 ? '' : ` · ${pass}회째`;
-      for (const segment of buildScriptSegments(script, settings, start)) {
-        if (signal.aborted) return;
-        setPosition(script, segment.sentence);
-        highlightSentence(segment.sentence, true);
-        status(`재생 중 · ${segment.sentence + 1} / ${total}문장${passLabel}`);
-        await speech.speak(segment.text, segment.language, settings.rate, signal);
-        if (signal.aborted) return;
-        await sleep(segment.waitAfterMs, signal);
+      for (let n = firstIndex; n < queue.length; n++) {
+        const script = queue[n]!;
+        if (script !== currentScript()) showScript(script);
+        const total = sentenceCount(script);
+        const queueLabel = queue.length > 1 ? ` · ${n + 1}/${queue.length}번째 스크립트` : '';
+        for (const segment of buildScriptSegments(script, settings, start)) {
+          if (signal.aborted) return;
+          setPosition(script, segment.sentence);
+          highlightSentence(segment.sentence, true);
+          status(`재생 중 · ${segment.sentence + 1} / ${total}문장${queueLabel}${passLabel}`);
+          await speech.speak(segment.text, segment.language, settings.rate, signal);
+          if (signal.aborted) return;
+          await sleep(segment.waitAfterMs, signal);
+        }
+        start = 0;
       }
-      start = 0;
+      firstIndex = 0;
     }
     if (!signal.aborted) {
-      setPosition(script, 0);
-      status('스크립트를 끝까지 들었어요.');
+      if (queue[0] !== currentScript()) showScript(queue[0]!);
+      else setPosition(queue[0]!, 0);
+      status(queue.length > 1 ? '모든 스크립트를 끝까지 들었어요.' : '스크립트를 끝까지 들었어요.');
     }
   } catch (error) {
     if (!signal.aborted) status(error instanceof Error ? error.message : '음성 재생 실패');
@@ -129,6 +149,41 @@ async function play(from?: number): Promise<void> {
     }
   }
 }
+function voiceLabel(voice: SpeechSynthesisVoice, language: string): string {
+  const lang = voice.lang.replace('_', '-');
+  // 온라인 음성은 네트워크가 끊기면 읽지 못할 수 있어 구분해 둡니다.
+  return `${voice.name}${lang.toLowerCase() === language.toLowerCase() ? '' : ` · ${lang}`}${voice.localService ? '' : ' · 온라인'}`;
+}
+/** 현재 스크립트 언어로 읽을 수 있는 음성만 보여 줍니다. 선택은 언어별로 저장됩니다. */
+async function refreshVoices(): Promise<void> {
+  const language = currentScript()?.language;
+  if (!language) return;
+  const voices = await speech.voicesFor(language);
+  if (currentScript()?.language !== language) return;
+  const element = select('scriptVoice');
+  element.replaceChildren(new Option('자동 (기기 기본)', ''),
+    ...voices.map(voice => new Option(voiceLabel(voice, language), voice.voiceURI)));
+  const preferred = state.voices[language] ?? '';
+  element.value = voices.some(voice => voice.voiceURI === preferred) ? preferred : '';
+  element.disabled = !voices.length;
+  dom('scriptVoiceLanguage').textContent = `(${languageName(language)})`;
+}
+function changeVoice(): void {
+  const script = currentScript();
+  if (!script) return;
+  const { [script.language]: _previous, ...rest } = state.voices;
+  const value = select('scriptVoice').value;
+  state.voices = value ? { ...rest, [script.language]: value } : rest;
+  saveVoicePreferences(state.voices);
+  speech.setPreferredVoices(state.voices);
+  if (state.controller) return;
+  // 재생 중이 아니면 지금 문장을 한 번 읽어 바로 비교해 볼 수 있게 합니다.
+  const sentences = script.paragraphs.flatMap(paragraph => paragraph.sentences);
+  const index = state.position?.id === script.id ? state.position.sentence : 0;
+  speech.cancel();
+  void speech.speak(sentences[index] ?? sentences[0] ?? '', script.language, state.settings.rate,
+    new AbortController().signal).catch(() => undefined);
+}
 function updateSettings(): void {
   state.settings = normalizeScriptSettings({
     repeats: Number(select('scriptRepeats').value),
@@ -136,6 +191,7 @@ function updateSettings(): void {
     paragraphDelayMs: Number(select('paragraphDelay').value),
     rate: Number(input('scriptRate').value),
     showTranslation: input('showScriptTranslation').checked,
+    playAll: input('scriptPlayAll').checked,
   });
   saveScriptSettings(state.settings);
   dom('scriptRateValue').textContent = `${state.settings.rate.toFixed(1)}×`;
@@ -147,6 +203,7 @@ function restoreSettings(): void {
   select('paragraphDelay').value = String(s.paragraphDelayMs);
   input('scriptRate').value = String(s.rate);
   input('showScriptTranslation').checked = s.showTranslation;
+  input('scriptPlayAll').checked = s.playAll;
   dom('scriptRateValue').textContent = `${s.rate.toFixed(1)}×`;
 }
 async function reload(): Promise<void> {
@@ -155,14 +212,15 @@ async function reload(): Promise<void> {
   state.lastLoadedAt = Date.now();
   refreshOptions();
   render();
+  void refreshVoices();
   status(state.scripts.length ? '재생 버튼을 누르거나 문장을 눌러 들어 보세요.'
     : '등록된 스크립트가 없어요. Notion 스크립트 데이터베이스를 확인해 주세요.');
 }
 select('scriptSelect').addEventListener('change', () => {
   stopPlayback();
   const script = state.scripts.find(item => item.id === select('scriptSelect').value);
-  if (script) setPosition(script, 0);
-  render();
+  if (script) showScript(script);
+  else render();
   status('재생 버튼을 누르거나 문장을 눌러 들어 보세요.');
 });
 for (const id of ['scriptRepeats', 'sentenceDelay', 'paragraphDelay']) {
@@ -170,6 +228,9 @@ for (const id of ['scriptRepeats', 'sentenceDelay', 'paragraphDelay']) {
 }
 input('scriptRate').addEventListener('input', updateSettings);
 input('showScriptTranslation').addEventListener('change', () => { updateSettings(); render(); });
+input('scriptPlayAll').addEventListener('change', updateSettings);
+select('scriptVoice').addEventListener('change', changeVoice);
+speech.onVoicesChanged(() => void refreshVoices());
 dom('scriptPlay').addEventListener('click', () => void play(state.controller ? 0 : undefined));
 dom('scriptStop').addEventListener('click', () => { stopPlayback(); status('재생을 중지했어요. 이어서 재생하면 이 문장부터 읽어요.'); });
 const sentenceOf = (event: Event): number | null => {

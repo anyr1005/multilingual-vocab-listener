@@ -28,10 +28,12 @@
           <label>문장 사이 대기<select id="sentenceDelay"><option value="0">없음</option><option value="400">0.4초</option><option value="800">0.8초</option><option value="1500">1.5초</option><option value="3000">3초</option></select></label>
           <label>문단 사이 대기<select id="paragraphDelay"><option value="0">없음</option><option value="700">0.7초</option><option value="1200">1.2초</option><option value="2000">2초</option><option value="4000">4초</option></select></label>
           <label>음성 속도 <span id="scriptRateValue">0.9×</span><input id="scriptRate" type="range" min="0.5" max="1.5" step="0.1" value="0.9" /></label>
+          <label class="script-picker">음성 <span id="scriptVoiceLanguage" class="muted"></span><select id="scriptVoice"><option value="">자동 (기기 기본)</option></select></label>
         </div>
-        <div class="display-options"><label class="check"><input id="showScriptTranslation" type="checkbox" checked /> 한국어 해석 표시</label></div>
+        <div class="display-options"><label class="check"><input id="showScriptTranslation" type="checkbox" checked /> 한국어 해석 표시</label>
+          <label class="check"><input id="scriptPlayAll" type="checkbox" /> 모든 스크립트 이어 듣기</label></div>
         <div class="play-controls"><button id="scriptPlay" class="primary" type="button">▶ 이어서 재생</button><button id="scriptStop" type="button" disabled>■ 중지</button></div>
-        <p class="muted info">문장을 누르면 그 문장부터 읽어요. 화면 잠금 또는 다른 앱으로 전환할 때 재생이 중단될 수 있어요.</p>
+        <p class="muted info">문장을 누르면 그 문장부터 읽어요. 음성 목록은 기기에 설치된 음성이라 기기·브라우저마다 달라요. 화면 잠금 또는 다른 앱으로 전환할 때 재생이 중단될 수 있어요.</p>
         <article id="scriptText" class="script-text" aria-label="스크립트 본문"></article>
       </div>
       <p id="status" class="status" role="status" aria-live="polite">불러오는 중</p>
