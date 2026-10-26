@@ -5,14 +5,13 @@ import { orderByKeys, shuffleKeys } from './logic/order.js';
 import { dom, input, keepScreenAwake, registerServiceWorker, releaseScreen, restoreScreenWake, select } from './logic/page.js';
 import { buildSegments, normalizeSettings } from './logic/playlist.js';
 import { SpeechPlayer, sleep } from './logic/speech.js';
+import { chooseVoice, fillVoiceSelect } from './logic/voicePicker.js';
 import { loadLastConceptId, loadProgress, loadSettings, loadTargetLanguage, loadVoicePreferences, readProgress, saveLastConceptId,
   saveProgress, saveSettings, saveTargetLanguage, toggleProgress, type Familiarity } from './logic/storage.js';
 
 type Mode = 'card' | 'listen';
 type Scope = 'all' | 'known' | 'unknown' | 'unmarked';
 const speech = new SpeechPlayer();
-// 스크립트 페이지에서 고른 언어별 음성을 단어장에서도 그대로 씁니다.
-speech.setPreferredVoices(loadVoicePreferences());
 const state = {
   payload: null as WordPayload | null,
   words: [] as Vocabulary[],
@@ -27,11 +26,14 @@ const state = {
   controller: null as AbortController | null,
   listLimit: 60,
   lastLoadedAt: 0,
+  // 언어별로 고른 음성. 스크립트 페이지와 같은 저장값을 씁니다.
+  voices: loadVoicePreferences(),
   shuffleOrder: new Map<string, number>(),
   languageNames: new Map<string, string>(),
   // 앱을 다시 열면 마지막으로 보던 개념부터 이어서 시작합니다.
   restoreConceptId: loadLastConceptId(),
 };
+speech.setPreferredVoices(state.voices);
 let savedConceptId: string | null = null;
 const status = (message: string): void => { dom('status').textContent = message; };
 /** 같은 언어의 다른 지역이 함께 있을 때만 지역이 붙은 이름을 씁니다. */
@@ -76,6 +78,27 @@ function refreshLanguages(): void {
   dom('targetOnlyLabel').textContent = `${name}만`;
   dom('targetFirstLabel').textContent = `${name} → 한국어`;
   dom('koreanFirstLabel').textContent = `한국어 → ${name}`;
+  dom('targetVoiceLabel').textContent = `${name} 음성`;
+  void refreshVoices();
+}
+/** 학습 언어와 한국어 각각 기기에 있는 음성 중에서 고릅니다. */
+async function refreshVoices(): Promise<void> {
+  const target = select('targetVoice');
+  target.closest('label')!.hidden = !state.targetLanguage;
+  await Promise.all([
+    state.targetLanguage ? fillVoiceSelect(target, speech, state.targetLanguage, state.voices) : undefined,
+    fillVoiceSelect(select('koreanVoice'), speech, BASE_LANGUAGE, state.voices),
+  ]);
+}
+function changeVoice(element: HTMLSelectElement): void {
+  state.voices = chooseVoice(element, speech, state.voices);
+  const language = element.dataset.language;
+  const term = current() && language ? getTerm(current()!, language) : undefined;
+  if (state.controller || !term) return;
+  // 재생 중이 아니면 지금 카드의 단어를 한 번 읽어 바로 비교해 볼 수 있게 합니다.
+  speech.cancel();
+  void speech.speak(speechTextOf(term), language!, state.settings.rate, new AbortController().signal)
+    .catch(() => undefined);
 }
 function refreshGroups(): void {
   populate('group', state.words.filter(w => getTerm(w, state.targetLanguage)).map(w => w.group));
@@ -382,6 +405,8 @@ for (const id of ['order', 'repeatKo', 'repeatTarget', 'repeatOther', 'thoughtDe
 for (const id of ['rate', 'showKorean', 'showTarget', 'showPronunciation', 'showOtherLanguages']) {
   input(id).addEventListener(id === 'rate' ? 'input' : 'change', updateSettings);
 }
+for (const id of ['targetVoice', 'koreanVoice']) select(id).addEventListener('change', () => changeVoice(select(id)));
+speech.onVoicesChanged(() => void refreshVoices());
 dom('play').addEventListener('click', () => void playAll());
 dom('stop').addEventListener('click', () => { stopPlayback(); status('재생을 중지했어요.'); });
 dom('moreWords').addEventListener('click', () => { state.listLimit += 60; renderList(); });

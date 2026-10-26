@@ -4,8 +4,9 @@ import { fetchScripts } from './logic/data.js';
 import { dom, input, keepScreenAwake, registerServiceWorker, releaseScreen, restoreScreenWake, select } from './logic/page.js';
 import { buildScriptSegments, normalizeScriptSettings, orderScripts, sentenceCount } from './logic/scriptPlaylist.js';
 import { SpeechPlayer, sleep } from './logic/speech.js';
-import { loadScriptPosition, loadScriptSettings, loadVoicePreferences, saveScriptPosition, saveScriptSettings,
-  saveVoicePreferences } from './logic/storage.js';
+import { loadScriptPosition, loadScriptSettings, loadVoicePreferences, saveScriptPosition,
+  saveScriptSettings } from './logic/storage.js';
+import { chooseVoice, fillVoiceSelect } from './logic/voicePicker.js';
 
 const speech = new SpeechPlayer();
 const state = {
@@ -149,33 +150,17 @@ async function play(from?: number): Promise<void> {
     }
   }
 }
-function voiceLabel(voice: SpeechSynthesisVoice, language: string): string {
-  const lang = voice.lang.replace('_', '-');
-  // 온라인 음성은 네트워크가 끊기면 읽지 못할 수 있어 구분해 둡니다.
-  return `${voice.name}${lang.toLowerCase() === language.toLowerCase() ? '' : ` · ${lang}`}${voice.localService ? '' : ' · 온라인'}`;
-}
-/** 현재 스크립트 언어로 읽을 수 있는 음성만 보여 줍니다. 선택은 언어별로 저장됩니다. */
+/** 현재 스크립트 언어로 읽을 수 있는 음성만 보여 줍니다. */
 async function refreshVoices(): Promise<void> {
   const language = currentScript()?.language;
   if (!language) return;
-  const voices = await speech.voicesFor(language);
-  if (currentScript()?.language !== language) return;
-  const element = select('scriptVoice');
-  element.replaceChildren(new Option('자동 (기기 기본)', ''),
-    ...voices.map(voice => new Option(voiceLabel(voice, language), voice.voiceURI)));
-  const preferred = state.voices[language] ?? '';
-  element.value = voices.some(voice => voice.voiceURI === preferred) ? preferred : '';
-  element.disabled = !voices.length;
   dom('scriptVoiceLanguage').textContent = `(${languageName(language)})`;
+  await fillVoiceSelect(select('scriptVoice'), speech, language, state.voices);
 }
 function changeVoice(): void {
   const script = currentScript();
   if (!script) return;
-  const { [script.language]: _previous, ...rest } = state.voices;
-  const value = select('scriptVoice').value;
-  state.voices = value ? { ...rest, [script.language]: value } : rest;
-  saveVoicePreferences(state.voices);
-  speech.setPreferredVoices(state.voices);
+  state.voices = chooseVoice(select('scriptVoice'), speech, state.voices);
   if (state.controller) return;
   // 재생 중이 아니면 지금 문장을 한 번 읽어 바로 비교해 볼 수 있게 합니다.
   const sentences = script.paragraphs.flatMap(paragraph => paragraph.sentences);
