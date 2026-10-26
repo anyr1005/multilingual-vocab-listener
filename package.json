@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "test": "vitest run",
     "sync:notion": "tsx scripts/sync-notion.ts",
-    "data:sample": "node -e \"const fs=require('fs');fs.mkdirSync('public/data',{recursive:true});fs.copyFileSync('examples/words.sample.json','public/data/words.json')\"",
+    "data:sample": "node -e \"const fs=require('fs');fs.mkdirSync('public/data',{recursive:true});fs.copyFileSync('examples/words.sample.json','public/data/words.json');fs.copyFileSync('examples/scripts.sample.json','public/data/scripts.json')\"",
     "check": "npm run typecheck && npm run test && npm run build"
   },
   "devDependencies": {

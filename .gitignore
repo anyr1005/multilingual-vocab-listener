@@ -10,6 +10,7 @@ coverage/
 
 # Notion 동기화 결과. 배포 때 Actions가 만들며 저장소에는 두지 않습니다.
 public/data/words.json
+public/data/scripts.json
 
 # IDE/에디터 설정 (머신 종속)
 .idea/

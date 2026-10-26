@@ -11,5 +11,5 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["scripts/**/*.ts", "tests/**/*.ts", "src/domain/**/*.ts", "src/logic/playlist.ts", "src/logic/order.ts", "src/logic/progress.ts"]
+  "include": ["scripts/**/*.ts", "tests/**/*.ts", "src/domain/**/*.ts", "src/logic/playlist.ts", "src/logic/scriptPlaylist.ts", "src/logic/order.ts", "src/logic/progress.ts"]
 }

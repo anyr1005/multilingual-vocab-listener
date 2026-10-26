@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "source": "seed",
+  "updatedAt": "",
+  "count": 2,
+  "scripts": [
+    {
+      "id": "sample-script-gyeongbokgung",
+      "title": "경복궁 안내",
+      "language": "zh-CN",
+      "group": "궁궐",
+      "paragraphs": [
+        {
+          "kind": "heading",
+          "sentences": ["景福宫"],
+          "translation": "경복궁"
+        },
+        {
+          "kind": "text",
+          "sentences": ["大家好，欢迎来到景福宫。", "景福宫是朝鲜王朝的正宫，建于1395年。"],
+          "translation": "여러분 안녕하세요, 경복궁에 오신 것을 환영합니다. 경복궁은 조선 왕조의 법궁으로, 1395년에 지어졌습니다."
+        },
+        {
+          "kind": "text",
+          "sentences": ["“景福”这个名字出自《诗经》，意思是“大福”。"],
+          "translation": "'경복'이라는 이름은 《시경》에서 나왔으며, '큰 복'이라는 뜻입니다."
+        },
+        {
+          "kind": "text",
+          "sentences": ["壬辰倭乱时，景福宫被烧毁，直到1867年才重建。"],
+          "translation": "임진왜란 때 경복궁은 불에 탔고, 1867년에야 다시 지어졌습니다."
+        }
+      ]
+    },
+    {
+      "id": "sample-script-changdeokgung",
+      "title": "창덕궁 안내",
+      "language": "en-US",
+      "group": "궁궐",
+      "paragraphs": [
+        {
+          "kind": "text",
+          "sentences": ["Welcome to Changdeokgung Palace.", "It was built in 1405 as a secondary palace."],
+          "translation": "창덕궁에 오신 것을 환영합니다. 1405년에 이궁으로 지어졌습니다."
+        },
+        {
+          "kind": "text",
+          "sentences": ["In 1997, it was listed as a UNESCO World Heritage Site."],
+          "translation": "1997년 유네스코 세계유산에 등재되었습니다."
+        }
+      ]
+    }
+  ]
+}

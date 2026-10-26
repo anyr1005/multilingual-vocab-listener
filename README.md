@@ -7,6 +7,7 @@ Notion에서 **한 개념에 여러 언어의 표현을 연결**하고, 스마�
 - **기술**: Vanilla TypeScript / Vite / Node.js 동기화 스크립트 / GitHub Actions / GitHub Pages
 - **데이터**: Notion이 유일한 원본입니다. 저장소에는 단어 JSON을 두지 않고, 배포할 때 Actions가 Notion에서 만듭니다
 - **학습**: 한국어 → 선택한 언어 (중국어·영어·일본어 등), 언어별 반복/속도/대기시간, 단어 카드, 검색, 복습 상태
+- **스크립트 듣기**: 안내 멘트처럼 긴 외국어 글을 문장 단위로 이어 읽고, 읽는 문장을 강조합니다 (선택 기능, [`docs/NOTION-SETUP.md`](docs/NOTION-SETUP.md) 7절)
 - **여러 언어 듣기**: 같은 개념에 등록된 표현을 `한국어 → 선택 언어 → 다른 언어 모두` 순서로 재생 가능
 - **원본**: Notion의 데이터만 편집합니다. 웹앱에서 단어 추가·수정 기능은 제공하지 않습니다.
 
@@ -22,7 +23,7 @@ npm run dev
 
 표시되는 로컬 URL로 접속합니다. 앱은 `public/data/words.json`을 읽는데, 이 파일은 git에 올리지 않습니다(`.gitignore`). 로컬에서는 둘 중 하나로 만듭니다.
 
-- `npm run data:sample`: `examples/words.sample.json`의 예시 4개를 복사합니다. 발음 보정과 다국어 연결 예시가 들어 있습니다
+- `npm run data:sample`: `examples/words.sample.json`의 예시 4개와 `examples/scripts.sample.json`의 스크립트 예시 2개를 복사합니다. 발음 보정과 다국어 연결 예시가 들어 있습니다
 - `npm run sync:notion`: 실제 Notion 내용을 받습니다
 
 ```bash
@@ -137,6 +138,7 @@ Notion Secrets가 하나도 없으면 샘플 데이터로 배포되고, 설정�
 
 - **단어 카드**: 한국어 앞면 / 선택 언어 답변 + 발음 표기 + 다른 언어 표현 보기.
 - **연속 듣기**: 한국어/선택 언어의 반복 횟수와 대기 시간을 지정. `전체 언어 듣기`에서는 다른 언어도 1회 이상 추가 재생.
+- **스크립트**: 별도 페이지 `script/`(예: `https://username.github.io/repo/script/`)에서 듣습니다. 단어장 상단의 `스크립트 듣기 →` 링크는 스크립트가 있을 때만 보이고, 주소를 홈 화면에 따로 추가할 수도 있습니다. 선택한 스크립트를 스크립트 언어 음성으로 처음부터 끝까지 읽습니다. 전문 반복(1~3회, 계속), 문장·문단 사이 대기, 속도를 정하고, 문장을 누르면 그 문장부터 읽습니다. 멈춘 위치를 기억해 다음에 이어 듣습니다.
 - **언어별 학습 기록**: 모름/암기 표시를 브라우저 로컬 스토리지에 저장하며 PC·휴대폰 간 자동 동기화는 없습니다.
 - **모바일 TTS**: Web Speech API를 사용하며 언어별 음성이 OS에 설치되어 있지 않으면 다른 목소리로 대체되거나 재생이 실패할 수 있습니다. **화면 잠금/백그라운드 재생은 보장되지 않습니다.**
 - **화면 켜두기**: 연속 재생 중에는 Screen Wake Lock으로 화면이 꺼지지 않게 시도합니다. 지원하는 브라우저(Android Chrome 등)에서만 동작하고 iOS Safari에는 적용되지 않습니다.
@@ -147,13 +149,17 @@ Notion Secrets가 하나도 없으면 샘플 데이터로 배포되고, 설정�
 
 ```text
 src/domain/words.ts    # v2 다국어 개념 모델 + v1 호환 + 런타임 검증
+src/domain/scripts.ts  # 스크립트 모델 + 문장 나누기 + 런타임 검증
 src/logic/playlist.ts  # 언어별 TTS 재생 계획 (순수 함수)
+src/logic/scriptPlaylist.ts # 스크립트 문장 재생 계획 (순수 함수)
 src/logic/order.ts     # 무작위 학습 순서 고정 (순수 함수)
 src/logic/progress.ts  # 언어별 암기 기록 + v1 이행 (순수 함수)
 src/logic/speech.ts    # Web Speech API 어댑터
 src/logic/storage.ts   # 언어별 복습 기록/설정/데이터 캐시
 src/logic/data.ts      # JSON 로딩
-src/main.ts            # 프런트엔드 DOM/UI
+src/logic/page.ts      # 두 페이지 공용 DOM·화면 켜두기·서비스 워커 헬퍼
+src/main.ts            # 단어장 페이지 DOM/UI (index.html)
+src/scriptPage.ts      # 스크립트 듣기 페이지 DOM/UI (script/index.html)
 public/sw.js           # 오프라인 캐시 서비스 워커
 scripts/notion.ts      # Notion 필드 매핑/페이지네이션
 scripts/sync-notion.ts # 실패 시 원본 유지 + JSON 생성

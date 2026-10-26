@@ -1,3 +1,4 @@
+import { parseScriptPayload, splitSentences, type Script, type ScriptParagraph } from '../src/domain/scripts.js';
 import { BASE_LANGUAGE, canonicalLocale, parseWordPayload, type Vocabulary } from '../src/domain/words.js';
 
 type UnknownRecord = Record<string, unknown>;
@@ -193,13 +194,14 @@ export async function notionRequest(token: string, method: 'GET' | 'POST', path:
   throw new Error('Notion API 요청을 완료하지 못했습니다.');
 }
 
-export async function resolveDataSourceId(token: string, id?: string, databaseId?: string): Promise<string> {
+export async function resolveDataSourceId(token: string, id?: string, databaseId?: string,
+  envPrefix = 'NOTION'): Promise<string> {
   if (id?.trim()) return id.trim();
-  if (!databaseId?.trim()) throw new Error('NOTION_DATA_SOURCE_ID 또는 NOTION_DATABASE_ID가 필요합니다.');
+  if (!databaseId?.trim()) throw new Error(`${envPrefix}_DATA_SOURCE_ID 또는 ${envPrefix}_DATABASE_ID가 필요합니다.`);
   const database = await notionRequest(token, 'GET', `/databases/${encodeURIComponent(databaseId.trim())}`);
   const sources = Array.isArray(database.data_sources) ? database.data_sources : [];
   if (sources.length !== 1 || typeof record(sources[0])?.id !== 'string') {
-    throw new Error('데이터 소스가 여러 개입니다. NOTION_DATA_SOURCE_ID를 직접 설정해 주세요.');
+    throw new Error(`데이터 소스가 여러 개입니다. ${envPrefix}_DATA_SOURCE_ID를 직접 설정해 주세요.`);
   }
   return String(record(sources[0])!.id);
 }
@@ -233,4 +235,114 @@ export async function collectWords(token: string, sourceId: string): Promise<Voc
     || a.sub.localeCompare(b.sub, 'ko')
     || a.terms[BASE_LANGUAGE]!.text.localeCompare(b.terms[BASE_LANGUAGE]!.text, 'ko'));
   return words;
+}
+
+/** 스크립트 데이터베이스의 속성. 본문은 속성이 아니라 페이지 안쪽 블록에서 읽습니다. */
+const SCRIPT_PROPERTY_NAMES = {
+  title: ['제목', '이름', 'Name', 'Title'],
+  language: ['언어', 'Language'],
+  group: ['대분류', '분류', 'Category'],
+} as const;
+/** 본문으로 읽는 블록. 그 밖의 블록(이미지, 구분선, 토글 안쪽 등)은 건너뜁니다. */
+const SCRIPT_TEXT_BLOCKS = new Set(['paragraph', 'bulleted_list_item', 'numbered_list_item', 'callout']);
+const SCRIPT_HEADING_BLOCKS = new Set(['heading_1', 'heading_2', 'heading_3']);
+
+/** `언어` 칸에는 정식 컬럼 이름(`중국어`, `English` …)이나 BCP47 코드를 적습니다. */
+export function scriptLanguage(value: string): string | null {
+  const name = value.trim();
+  const column = LANGUAGE_COLUMNS.find(entry => entry.text.some(alias => alias.toLowerCase() === name.toLowerCase()));
+  if (column) return column.locale;
+  return name.includes('-') || /^[a-z]{2,3}$/i.test(name) ? canonicalLocale(name) : null;
+}
+function blockText(block: UnknownRecord, kind: string): string {
+  const entries = record(block[kind])?.rich_text;
+  if (!Array.isArray(entries)) return '';
+  return entries.map(entry => {
+    const rich = record(entry);
+    return typeof rich?.plain_text === 'string' ? rich.plain_text : String(record(rich?.text)?.content ?? '');
+  }).join('').trim();
+}
+/**
+ * 페이지 블록을 문단으로 바꿉니다. 인용 블록은 바로 앞 문단의 한국어 해석으로 붙입니다.
+ * 원문과 해석이 문단 단위로 짝지어지므로 Notion에서 원문 아래 `"`로 해석을 적으면 됩니다.
+ */
+export function blocksToParagraphs(blocks: readonly unknown[], language: string, label: string): ScriptParagraph[] {
+  const paragraphs: ScriptParagraph[] = [];
+  for (const entry of blocks) {
+    const block = record(entry);
+    const kind = typeof block?.type === 'string' ? block.type : '';
+    if (!block || block.in_trash === true || block.archived === true) continue;
+    const text = blockText(block, kind);
+    if (!text) continue;
+    if (kind === 'quote') {
+      const previous = paragraphs.at(-1);
+      if (!previous) throw new Error(`${label}: 해석(인용 블록)이 본문보다 먼저 나옵니다.`);
+      previous.translation = previous.translation ? `${previous.translation}\n${text}` : text;
+    } else if (SCRIPT_TEXT_BLOCKS.has(kind) || SCRIPT_HEADING_BLOCKS.has(kind)) {
+      const sentences = splitSentences(text, language);
+      if (sentences.length) {
+        paragraphs.push({ kind: SCRIPT_HEADING_BLOCKS.has(kind) ? 'heading' : 'text', sentences, translation: '' });
+      }
+    }
+  }
+  return paragraphs;
+}
+/** 속성만 해석합니다. 빈 행이면 null이라 본문 블록을 받으러 가지 않습니다. */
+export function extractNotionScriptHeader(page: unknown): Omit<Script, 'paragraphs'> | null {
+  const input = record(page);
+  if (!input || input.archived === true || input.in_trash === true) return null;
+  const id = typeof input.id === 'string' ? input.id : '';
+  const props = record(input.properties) ?? {};
+  const title = lookup(props, SCRIPT_PROPERTY_NAMES.title);
+  const languageRaw = lookup(props, SCRIPT_PROPERTY_NAMES.language);
+  if (!title && !languageRaw) return null;
+  if (!id || !title) throw new Error(`제목이 없는 스크립트 페이지: ${id || '(ID 없음)'}`);
+  if (!languageRaw) throw new Error(`${title}: 스크립트의 언어 칸이 비어 있습니다.`);
+  const language = scriptLanguage(languageRaw);
+  if (!language) throw new Error(`${title}: 알 수 없는 언어 ${languageRaw}`);
+  return { id, title, language, group: lookup(props, SCRIPT_PROPERTY_NAMES.group) || '기타' };
+}
+async function collectBlocks(token: string, pageId: string): Promise<unknown[]> {
+  const blocks: unknown[] = [];
+  const cursors = new Set<string>();
+  let cursor: string | undefined;
+  for (;;) {
+    const query = new URLSearchParams({ page_size: '100' });
+    if (cursor) query.set('start_cursor', cursor);
+    const response = await notionRequest(token, 'GET', `/blocks/${encodeURIComponent(pageId)}/children?${query}`);
+    if (!Array.isArray(response.results)) throw new Error('Notion 블록 결과의 results 필드가 배열이 아닙니다.');
+    blocks.push(...response.results);
+    if (response.has_more !== true) break;
+    cursor = typeof response.next_cursor === 'string' ? response.next_cursor : undefined;
+    if (!cursor || cursors.has(cursor)) throw new Error('Notion 블록 페이지네이션 커서가 잘못되었습니다.');
+    cursors.add(cursor);
+  }
+  return blocks;
+}
+export async function collectScripts(token: string, sourceId: string): Promise<Script[]> {
+  const scripts: Script[] = [];
+  const cursors = new Set<string>();
+  let cursor: string | undefined;
+  for (;;) {
+    const body: UnknownRecord = { page_size: 100 };
+    if (cursor) body.start_cursor = cursor;
+    const response = await notionRequest(token, 'POST', `/data_sources/${encodeURIComponent(sourceId)}/query`, body);
+    if (!Array.isArray(response.results)) throw new Error('Notion 결과의 results 필드가 배열이 아닙니다.');
+    for (const entry of response.results) {
+      if (record(entry)?.object !== 'page') continue;
+      const header = extractNotionScriptHeader(entry);
+      if (!header) continue;
+      const paragraphs = blocksToParagraphs(await collectBlocks(token, header.id), header.language, header.title);
+      if (!paragraphs.length) throw new Error(`${header.title}: 스크립트 본문이 비어 있습니다.`);
+      scripts.push({ ...header, paragraphs });
+    }
+    if (response.has_more !== true) break;
+    cursor = typeof response.next_cursor === 'string' ? response.next_cursor : undefined;
+    if (!cursor || cursors.has(cursor)) throw new Error('Notion 페이지네이션 커서가 잘못되었습니다.');
+    cursors.add(cursor);
+  }
+  if (!scripts.length) throw new Error('Notion 스크립트가 0개여서 기존 데이터를 덮어쓰지 않습니다.');
+  scripts.sort((a, b) => a.group.localeCompare(b.group, 'ko') || a.title.localeCompare(b.title, 'ko'));
+  // 중복 ID 등은 브라우저와 같은 검증으로 걸러냅니다.
+  return parseScriptPayload({ schemaVersion: 1, source: 'notion', scripts }).scripts;
 }

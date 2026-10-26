@@ -18,6 +18,7 @@
 - `src/logic/playlist.ts`는 TTS 순서와 반복을 순수 함수로 산출한다. 특정 외국어를 하드코딩하지 않는다.
 - `src/logic/speech.ts`는 TTS 실현만 담당하고 선택 언어의 BCP47 코드를 사용한다.
 - 학습 기록은 **개념ID와 목표 언어를 조합한 키**로 저장한다. v1 중국어 기록 호환 동작을 유지한다.
+- 스크립트(`src/domain/scripts.ts`)는 단어 개념과 별개인 한 언어의 긴 글이다. Notion 별도 DB의 페이지 본문에서 읽고, 동기화 시점에 문장으로 나눠 `public/data/scripts.json`으로 내보낸다. 화면은 단어장과 별도 페이지 `script/index.html`(`src/scriptPage.ts`)이며, 선택 기능이므로 파일이 없으면 단어장의 링크를 숨긴다. 하위 페이지는 `<meta name="app-root">`로 루트를 알리고 데이터 URL은 `appUrl()`로 만든다.
 - DOM 렌더링은 textContent/노드 생성으로 하며 Notion 사용자 내용을 innerHTML에 삽입하지 않는다.
 
 ## 안정성 체크리스트

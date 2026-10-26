@@ -10,6 +10,7 @@ on:
       - 'scripts/**'
       - 'tests/**'
       - 'index.html'
+      - 'script/**'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig*.json'
@@ -50,6 +51,9 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          # 스크립트 데이터베이스는 선택. 비어 있으면 스크립트 없이 배포합니다.
+          NOTION_SCRIPTS_DATA_SOURCE_ID: ${{ secrets.NOTION_SCRIPTS_DATA_SOURCE_ID }}
+          NOTION_SCRIPTS_DATABASE_ID: ${{ secrets.NOTION_SCRIPTS_DATABASE_ID }}
         shell: bash
         run: |
           # 저장소에는 단어 JSON이 없으므로 Notion 없이 배포하면 빈 앱이 됩니다.
@@ -58,7 +62,7 @@ jobs:
             exit 1
           fi
           # API 실패/응답 비정상 시 빌드 자체가 실패하며 이전 Pages 배포는 유지됩니다.
-          npm run sync:notion -- --output public/data/words.json
+          npm run sync:notion -- --output public/data/words.json --scripts-output public/data/scripts.json
       - name: Build frontend
         run: npm run build
       - name: Notify on failure

@@ -32,3 +32,10 @@ footer{font-size:12px;text-align:center;color:#76879b;line-height:1.8;padding:15
 .other-translations>small{color:#75889e;font-size:11px;margin-bottom:3px}
 .other-term{line-height:1.7;overflow-wrap:anywhere}
 .other-term strong{color:#215791}.other-term em{color:#7890a8;font-size:12px;font-style:normal}
+.page-link{display:inline-block;margin-top:10px;font-size:13px;font-weight:700;color:#215791;text-decoration:none}.page-link:hover{text-decoration:underline}
+.identity .page-link:first-child{margin:0 0 4px}.script-settings .script-picker{grid-column:1/-1}.script-text{margin-top:18px;line-height:1.95}
+.script-paragraph{margin:0 0 16px;font-size:19px;font-weight:500}.script-heading{font-size:21px;font-weight:780}
+.sentence{cursor:pointer;border-radius:6px;padding:1px 2px;transition:background .15s}.sentence:hover{background:#f0f5fd}.sentence.active{background:#ffe9a8;color:#132a46}
+.sentence:focus-visible{outline:3px solid #6b9edb;outline-offset:1px}
+.script-translation{display:block;font-size:13px;font-weight:400;color:#6a7b91;line-height:1.6;margin-top:4px;white-space:pre-line}
+@media(max-width:680px){.script-paragraph{font-size:18px}.script-heading{font-size:19px}}

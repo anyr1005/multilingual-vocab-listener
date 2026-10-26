@@ -2,7 +2,7 @@
  * 오프라인 캐시. 지하철 등 네트워크가 끊긴 곳에서도 앱 셸이 뜨도록 합니다.
  *
  * - 앱 셸(HTML): 네트워크 우선 → 실패 시 캐시. 배포 직후 낡은 화면이 고정되지 않습니다.
- * - 단어 JSON: 네트워크 우선 → 실패 시 캐시. 캐시 무효화 쿼리(?_=…)를 무시하고 찾습니다.
+ * - 단어·스크립트 JSON: 네트워크 우선 → 실패 시 캐시. 캐시 무효화 쿼리(?_=…)를 무시하고 찾습니다.
  * - 해시가 붙은 정적 자산: 캐시 우선. 내용이 바뀌면 파일명이 바뀌므로 안전합니다.
  *
  * 빌드 산출물 목록을 미리 알 수 없으므로 사전 캐시 대신 런타임 캐시를 사용합니다.
@@ -11,11 +11,13 @@
 const VERSION = 'v1';
 const CACHE = `vocab-listener-${VERSION}`;
 const SHELL = './';
+// 단어장과 스크립트 듣기는 별도 페이지라 둘 다 미리 받아 둡니다.
+const PAGES = [SHELL, './script/'];
 
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE)
-      .then(cache => cache.add(new Request(SHELL, { cache: 'reload' })))
+      .then(cache => cache.addAll(PAGES.map(page => new Request(page, { cache: 'reload' }))))
       .catch(() => undefined) // 셸 사전 캐시 실패가 설치를 막지 않도록 합니다.
       .then(() => self.skipWaiting()),
   );
@@ -60,7 +62,7 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
-    // 오프라인이면 캐시된 셸로 되돌립니다. 주소가 달라도 같은 단일 페이지입니다.
+    // 오프라인이면 그 페이지의 캐시를, 없으면 단어장 셸을 보여 줍니다.
     event.respondWith(
       networkFirst(request).catch(() =>
         caches.open(CACHE).then(cache => cache.match(SHELL)).then(cached =>
@@ -72,7 +74,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (url.pathname.endsWith('/data/words.json')) {
+  if (url.pathname.endsWith('/data/words.json') || url.pathname.endsWith('/data/scripts.json')) {
     // data.ts가 ?_=타임스탬프를 붙이므로 쿼리를 무시하고 캐시를 찾습니다.
     event.respondWith(networkFirst(request, { ignoreSearch: true }));
     return;
