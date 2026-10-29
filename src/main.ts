@@ -1,6 +1,6 @@
 import { BASE_LANGUAGE, getTerm, languageName, languageNames, speechTextOf, targetLanguages, wordSearchText,
   type Vocabulary, type WordPayload } from './domain/words.js';
-import { fetchScripts, fetchWords } from './logic/data.js';
+import { fetchWords } from './logic/data.js';
 import { orderByKeys, shuffleKeys } from './logic/order.js';
 import { dom, input, keepScreenAwake, registerServiceWorker, releaseScreen, restoreScreenWake, select } from './logic/page.js';
 import { buildSegments, normalizeSettings } from './logic/playlist.js';
@@ -253,14 +253,6 @@ function setMode(mode: Mode): void {
   }
   render();
 }
-/**
- * 스크립트 듣기는 별도 페이지(script/)입니다. 선택 기능이라 스크립트가 있을 때만 링크를 보여 주고,
- * 실패해도 단어 학습을 막지 않습니다.
- */
-async function refreshScriptLink(): Promise<void> {
-  const payload = await fetchScripts().catch(() => null);
-  dom('scriptLink').hidden = !payload?.scripts.length;
-}
 function updateSettings(): void {
   state.settings = normalizeSettings({
     order: select('order').value,
@@ -353,7 +345,6 @@ async function playAll(): Promise<void> {
 }
 async function reloadWords(): Promise<void> {
   stopPlayback();
-  void refreshScriptLink();
   dom<HTMLButtonElement>('refresh').disabled = true;
   dom('syncBadge').textContent = '확인 중';
   try {
