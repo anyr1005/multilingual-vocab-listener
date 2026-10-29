@@ -54,6 +54,8 @@ jobs:
           # 스크립트 데이터베이스는 선택. 비어 있으면 스크립트 없이 배포합니다.
           NOTION_SCRIPTS_DATA_SOURCE_ID: ${{ secrets.NOTION_SCRIPTS_DATA_SOURCE_ID }}
           NOTION_SCRIPTS_DATABASE_ID: ${{ secrets.NOTION_SCRIPTS_DATABASE_ID }}
+          # 스크립트 DB를 쓰면 필수. 공개 scripts.json을 이 비밀번호로 암호화합니다.
+          SCRIPTS_PASSWORD: ${{ secrets.SCRIPTS_PASSWORD }}
         shell: bash
         run: |
           # 저장소에는 단어 JSON이 없으므로 Notion 없이 배포하면 빈 앱이 됩니다.

@@ -2,10 +2,11 @@ import type { Script } from './domain/scripts.js';
 import { BASE_LANGUAGE, languageName, languageNames } from './domain/words.js';
 import { fetchScripts } from './logic/data.js';
 import { dom, input, keepScreenAwake, registerServiceWorker, releaseScreen, restoreScreenWake, select } from './logic/page.js';
+import { isEncrypted, openScripts, unlockScripts, WrongPasswordError, type EncryptedScripts } from './logic/scriptCrypto.js';
 import { buildScriptSegments, normalizeScriptSettings, orderScripts, sentenceCount } from './logic/scriptPlaylist.js';
 import { SpeechPlayer, sleep } from './logic/speech.js';
-import { loadScriptPosition, loadScriptSettings, loadVoicePreferences, saveScriptPosition,
-  saveScriptSettings } from './logic/storage.js';
+import { loadScriptKey, loadScriptPosition, loadScriptSettings, loadVoicePreferences, saveScriptKey,
+  saveScriptPosition, saveScriptSettings } from './logic/storage.js';
 import { chooseVoice, fillVoiceSelect } from './logic/voicePicker.js';
 
 const speech = new SpeechPlayer();
@@ -17,6 +18,9 @@ const state = {
   controller: null as AbortController | null,
   lastLoadedAt: 0,
   voices: loadVoicePreferences(),
+  // 암호화된 스크립트를 연 키. 기억하지 않기를 골라도 페이지를 닫기 전까지는 다시 묻지 않습니다.
+  key: loadScriptKey(),
+  locked: null as EncryptedScripts | null,
 };
 speech.setPreferredVoices(state.voices);
 const status = (message: string): void => { dom('status').textContent = message; };
@@ -191,16 +195,69 @@ function restoreSettings(): void {
   input('scriptPlayAll').checked = s.playAll;
   dom('scriptRateValue').textContent = `${s.rate.toFixed(1)}×`;
 }
-async function reload(): Promise<void> {
-  const payload = await fetchScripts().catch(() => null);
-  state.scripts = payload?.scripts ?? [];
-  state.lastLoadedAt = Date.now();
+function showScripts(scripts: Script[], encrypted = false): void {
+  state.locked = null;
+  state.scripts = scripts;
+  dom('scriptUnlock').hidden = true;
+  dom('scriptLock').hidden = !encrypted;
   refreshOptions();
   render();
   void refreshVoices();
   status(state.scripts.length ? '재생 버튼을 누르거나 문장을 눌러 들어 보세요.'
     : '등록된 스크립트가 없어요. Notion 스크립트 데이터베이스를 확인해 주세요.');
 }
+function showLock(envelope: EncryptedScripts, message: string): void {
+  stopPlayback();
+  state.locked = envelope;
+  state.scripts = [];
+  refreshOptions();
+  render();
+  dom('scriptUnlock').hidden = false;
+  status(message);
+}
+function forgetKey(): void {
+  state.key = null;
+  saveScriptKey(null);
+}
+async function reload(): Promise<void> {
+  const source = await fetchScripts().catch(() => null);
+  state.lastLoadedAt = Date.now();
+  if (!source || !isEncrypted(source)) { showScripts(source?.scripts ?? []); return; }
+  if (!state.key) { showLock(source, '비밀번호를 입력해 스크립트를 열어 주세요.'); return; }
+  try {
+    showScripts((await openScripts(source, state.key)).scripts, true);
+  } catch {
+    // 비밀번호를 바꿔 다시 동기화했거나 저장한 키가 깨졌습니다.
+    forgetKey();
+    showLock(source, '비밀번호가 바뀌었어요. 다시 입력해 주세요.');
+  }
+}
+async function unlock(event: SubmitEvent): Promise<void> {
+  event.preventDefault();
+  const envelope = state.locked;
+  const password = input('scriptPassword').value;
+  if (!envelope || !password) return;
+  const button = dom<HTMLButtonElement>('scriptUnlockButton');
+  button.disabled = true;
+  status('여는 중…');
+  try {
+    const { payload, key } = await unlockScripts(envelope, password);
+    state.key = key;
+    saveScriptKey(input('scriptRemember').checked ? key : null);
+    input('scriptPassword').value = '';
+    showScripts(payload.scripts, true);
+  } catch (error) {
+    status(error instanceof WrongPasswordError ? error.message : '스크립트를 열지 못했어요.');
+    input('scriptPassword').select();
+  } finally {
+    button.disabled = false;
+  }
+}
+dom<HTMLFormElement>('scriptUnlock').addEventListener('submit', event => void unlock(event));
+dom('scriptLock').addEventListener('click', () => {
+  forgetKey();
+  void reload();
+});
 select('scriptSelect').addEventListener('change', () => {
   stopPlayback();
   const script = state.scripts.find(item => item.id === select('scriptSelect').value);

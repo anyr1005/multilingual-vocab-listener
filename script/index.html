@@ -21,6 +21,13 @@
     </header>
 
     <section class="panel" aria-label="스크립트 듣기">
+      <!-- 스크립트 데이터가 암호화돼 있으면 비밀번호로 엽니다. 단어장에는 영향이 없습니다. -->
+      <form id="scriptUnlock" class="script-unlock" hidden>
+        <input type="text" name="username" value="vocab-scripts" autocomplete="username" hidden />
+        <label>비밀번호<input id="scriptPassword" type="password" autocomplete="current-password" required /></label>
+        <label class="check"><input id="scriptRemember" type="checkbox" checked /> 이 기기에서 기억하기</label>
+        <button id="scriptUnlockButton" class="primary" type="submit">열기</button>
+      </form>
       <div id="scriptStudy" class="script-study" hidden>
         <div class="settings-grid script-settings">
           <label class="script-picker">스크립트<select id="scriptSelect"></select></label>
@@ -35,12 +42,13 @@
         <div class="play-controls"><button id="scriptPlay" class="primary" type="button">▶ 이어서 재생</button><button id="scriptStop" type="button" disabled>■ 중지</button></div>
         <p class="muted info">문장을 누르면 그 문장부터 읽어요. 음성 목록은 기기에 설치된 음성이라 기기·브라우저마다 달라요. 화면 잠금 또는 다른 앱으로 전환할 때 재생이 중단될 수 있어요.</p>
         <article id="scriptText" class="script-text" aria-label="스크립트 본문"></article>
+        <button id="scriptLock" class="quiet script-lock" type="button" hidden>🔒 이 기기에서 잠그기</button>
       </div>
       <p id="status" class="status" role="status" aria-live="polite">불러오는 중</p>
     </section>
 
     <footer>스크립트 편집은 Notion에서만 가능합니다. 듣던 위치와 설정은 현재 브라우저에 저장돼요.
-      <span>GitHub Pages의 스크립트 데이터는 공개됩니다. 개인 정보는 넣지 마세요.</span>
+      <span>스크립트 데이터는 비밀번호로 암호화해 GitHub Pages에 올립니다. 비밀번호가 짧으면 풀릴 수 있어요.</span>
     </footer>
   </main>
   <script type="module" src="../src/scriptPage.ts"></script>

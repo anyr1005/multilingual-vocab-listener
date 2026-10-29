@@ -1,6 +1,6 @@
-import { parseScriptPayload, type ScriptPayload } from '../domain/scripts.js';
 import { parseWordPayload, type WordPayload } from '../domain/words.js';
 import { appUrl } from './page.js';
+import { parseScriptSource, type ScriptSource } from './scriptCrypto.js';
 import { cacheScripts, cacheWords, loadCachedScripts, loadCachedWords } from './storage.js';
 
 export interface LoadedWords {
@@ -30,9 +30,9 @@ export async function fetchWords(): Promise<LoadedWords> {
 
 /**
  * 스크립트는 선택 기능이라 파일이 없으면(404) 오류가 아니라 '스크립트 없음'입니다.
- * 네트워크 오류일 때만 저장해 둔 스크립트로 대신합니다.
+ * 네트워크 오류일 때만 저장해 둔 스크립트로 대신합니다. 암호화된 파일은 연 내용이 아니라 받은 그대로 저장합니다.
  */
-export async function fetchScripts(): Promise<ScriptPayload | null> {
+export async function fetchScripts(): Promise<ScriptSource | null> {
   let response: Response;
   try {
     const url = appUrl('data/scripts.json');
@@ -42,8 +42,8 @@ export async function fetchScripts(): Promise<ScriptPayload | null> {
   if (response.status === 404) { cacheScripts(null); return null; }
   try {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const payload = parseScriptPayload(await response.json() as unknown);
-    cacheScripts(payload);
-    return payload;
+    const source = parseScriptSource(await response.json() as unknown);
+    cacheScripts(source);
+    return source;
   } catch { return loadCachedScripts(); }
 }

@@ -1,6 +1,6 @@
-import { parseScriptPayload, type ScriptPayload } from '../domain/scripts.js';
 import { parseWordPayload, type WordPayload } from '../domain/words.js';
 import { DEFAULT_SETTINGS, normalizeSettings, type ListeningSettings } from './playlist.js';
+import { parseScriptSource, type ScriptKey, type ScriptSource } from './scriptCrypto.js';
 import { DEFAULT_SCRIPT_SETTINGS, normalizeScriptSettings, type ScriptSettings } from './scriptPlaylist.js';
 import { sanitizeProgress, type Progress } from './progress.js';
 
@@ -57,12 +57,25 @@ export function loadScriptSettings(): ScriptSettings {
     ? normalizeScriptSettings(raw as Record<string, unknown>) : { ...DEFAULT_SCRIPT_SETTINGS };
 }
 export function saveScriptSettings(value: ScriptSettings): boolean { return saveJSON('scriptSettings', value); }
-export function loadCachedScripts(): ScriptPayload | null {
-  try { return parseScriptPayload(readJSON('scripts')); } catch { return null; }
+export function loadCachedScripts(): ScriptSource | null {
+  try { return parseScriptSource(readJSON('scripts')); } catch { return null; }
 }
-export function cacheScripts(value: ScriptPayload | null): boolean {
+export function cacheScripts(value: ScriptSource | null): boolean {
   if (value) return saveJSON('scripts', value);
   try { localStorage.removeItem(PREFIX + 'scripts'); return true; }
+  catch { return false; }
+}
+/** 암호화된 스크립트를 여는 키. '이 기기에서 기억하기'를 골랐을 때만 저장합니다. */
+export function loadScriptKey(): ScriptKey | null {
+  const raw = readJSON('scriptKey');
+  if (!raw || typeof raw !== 'object') return null;
+  const { salt, iterations, key } = raw as Record<string, unknown>;
+  return typeof salt === 'string' && typeof iterations === 'number' && typeof key === 'string'
+    ? { salt, iterations, key } : null;
+}
+export function saveScriptKey(value: ScriptKey | null): boolean {
+  if (value) return saveJSON('scriptKey', value);
+  try { localStorage.removeItem(PREFIX + 'scriptKey'); return true; }
   catch { return false; }
 }
 /** 마지막으로 듣던 스크립트와 문장 위치. 출퇴근 중 끊긴 곳부터 이어 듣습니다. */
